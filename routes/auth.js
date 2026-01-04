@@ -1,0 +1,200 @@
+const express = require('express');
+const bcrypt = require('bcryptjs');
+const jwt = require('jsonwebtoken');
+const Wholesaler = require('../models/Wholesaler');
+const Retailer = require('../models/Retailer');
+const { verifyGST } = require('../services/gstService');
+
+const router = express.Router();
+
+// Generate JWT token
+const generateToken = (userId, userType) => {
+  return jwt.sign(
+    { userId, userType },
+    process.env.JWT_SECRET,
+    { expiresIn: '7d' }
+  );
+};
+
+// Wholesaler Signup
+router.post('/wholesaler/signup', async (req, res) => {
+  try {
+    const {
+      business_name,
+      owner_name,
+      email,
+      phone,
+      password,
+      gst_number,
+      business_address,
+      city,
+      state,
+      pincode,
+      business_type
+    } = req.body;
+
+    // Check if email or phone already exists
+    const existingWholesaler = await Wholesaler.findOne({
+      $or: [{ email }, { phone }, { gst_number }]
+    });
+
+    if (existingWholesaler) {
+      return res.status(400).json({ error: 'Email, phone, or GST number already registered' });
+    }
+
+    // Verify GST (optional - can be done async)
+    // const gstValid = await verifyGST(gst_number);
+
+    // Hash password
+    const hashedPassword = await bcrypt.hash(password, 10);
+
+    // Create wholesaler
+    const wholesaler = new Wholesaler({
+      business_name,
+      owner_name,
+      email,
+      phone,
+      password: hashedPassword,
+      gst_number,
+      business_address,
+      city,
+      state,
+      pincode,
+      business_type: business_type || 'wholesaler'
+    });
+
+    await wholesaler.save();
+
+    // Generate token
+    const token = generateToken(wholesaler._id, 'wholesaler');
+
+    res.status(201).json({
+      message: 'Wholesaler registered successfully',
+      token,
+      user: {
+        _id: wholesaler._id,
+        business_name: wholesaler.business_name,
+        email: wholesaler.email,
+        userType: 'wholesaler'
+      }
+    });
+  } catch (error) {
+    console.error('Wholesaler signup error:', error);
+    res.status(500).json({ error: 'Server error during registration' });
+  }
+});
+
+// Retailer Signup
+router.post('/retailer/signup', async (req, res) => {
+  try {
+    const {
+      business_name,
+      owner_name,
+      email,
+      phone,
+      password,
+      gst_number,
+      business_address,
+      city,
+      state,
+      pincode
+    } = req.body;
+
+    // Check if email or phone already exists
+    const existingRetailer = await Retailer.findOne({
+      $or: [{ email }, { phone }, { gst_number }]
+    });
+
+    if (existingRetailer) {
+      return res.status(400).json({ error: 'Email, phone, or GST number already registered' });
+    }
+
+    // Hash password
+    const hashedPassword = await bcrypt.hash(password, 10);
+
+    // Create retailer
+    const retailer = new Retailer({
+      business_name,
+      owner_name,
+      email,
+      phone,
+      password: hashedPassword,
+      gst_number,
+      business_address,
+      city,
+      state,
+      pincode
+    });
+
+    await retailer.save();
+
+    // Generate token
+    const token = generateToken(retailer._id, 'retailer');
+
+    res.status(201).json({
+      message: 'Retailer registered successfully',
+      token,
+      user: {
+        _id: retailer._id,
+        business_name: retailer.business_name,
+        email: retailer.email,
+        userType: 'retailer'
+      }
+    });
+  } catch (error) {
+    console.error('Retailer signup error:', error);
+    res.status(500).json({ error: 'Server error during registration' });
+  }
+});
+
+// Login (handles both wholesaler and retailer)
+router.post('/login', async (req, res) => {
+  try {
+    const { email, password, userType } = req.body;
+
+    if (!email || !password || !userType) {
+      return res.status(400).json({ error: 'Email, password, and user type are required' });
+    }
+
+    let user;
+    if (userType === 'wholesaler') {
+      user = await Wholesaler.findOne({ email });
+    } else if (userType === 'retailer') {
+      user = await Retailer.findOne({ email });
+    } else {
+      return res.status(400).json({ error: 'Invalid user type' });
+    }
+
+    if (!user) {
+      return res.status(401).json({ error: 'Invalid credentials' });
+    }
+
+    // Verify password
+    const isValidPassword = await bcrypt.compare(password, user.password);
+    if (!isValidPassword) {
+      return res.status(401).json({ error: 'Invalid credentials' });
+    }
+
+    // Generate token
+    const token = generateToken(user._id, userType);
+
+    res.json({
+      message: 'Login successful',
+      token,
+      user: {
+        _id: user._id,
+        business_name: user.business_name,
+        owner_name: user.owner_name,
+        email: user.email,
+        phone: user.phone,
+        gst_number: user.gst_number,
+        userType
+      }
+    });
+  } catch (error) {
+    console.error('Login error:', error);
+    res.status(500).json({ error: 'Server error during login' });
+  }
+});
+
+module.exports = router;
