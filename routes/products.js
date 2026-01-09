@@ -100,7 +100,8 @@ router.post('/', verifyToken, isWholesaler, async (req, res) => {
       mrp,
       gst_percentage,
       hsn_code,
-      image_url
+      image_url,
+      images
     } = req.body;
 
     // Validate pricing tiers
@@ -124,7 +125,8 @@ router.post('/', verifyToken, isWholesaler, async (req, res) => {
       mrp,
       gst_percentage: gst_percentage || 18,
       hsn_code,
-      image_url
+      image_url,
+      images: images || []
     });
 
     await product.save();
@@ -155,7 +157,7 @@ router.put('/:id', verifyToken, isWholesaler, async (req, res) => {
     const allowedUpdates = [
       'name', 'description', 'category', 'subcategory', 'brand', 'sku',
       'unit_type', 'moq', 'stock_quantity', 'pricing_tiers', 'base_price',
-      'mrp', 'gst_percentage', 'hsn_code', 'image_url', 'is_active'
+      'mrp', 'gst_percentage', 'hsn_code', 'image_url', 'images', 'is_active'
     ];
 
     allowedUpdates.forEach(field => {
