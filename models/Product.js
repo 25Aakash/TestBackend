@@ -87,6 +87,25 @@ const productSchema = new mongoose.Schema({
     type: String,
     default: ''
   },
+  images: {
+    type: [{
+      uri: { type: String, required: true },
+      type: { type: String, enum: ['front', 'back', 'other'], required: true },
+      isPrimary: { type: Boolean, default: false }
+    }],
+    default: [],
+    validate: {
+      validator: function(images) {
+        // Check if there's exactly one primary image if images exist
+        if (images && images.length > 0) {
+          const primaryCount = images.filter(img => img.isPrimary).length;
+          return primaryCount <= 1;
+        }
+        return true;
+      },
+      message: 'Only one image can be set as primary'
+    }
+  },
   image_url: {
     type: String,
     default: ''
