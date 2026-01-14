@@ -33,10 +33,13 @@ router.post('/wholesaler/signup', async (req, res) => {
       business_type
     } = req.body;
 
+    // Normalize GST number - convert empty string to undefined
+    const normalizedGstNumber = gst_number && gst_number.trim() ? gst_number.trim() : undefined;
+
     // Check if email or phone already exists
     const existingChecks = [{ email }, { phone }];
-    if (gst_number) {
-      existingChecks.push({ gst_number });
+    if (normalizedGstNumber) {
+      existingChecks.push({ gst_number: normalizedGstNumber });
     }
     
     const existingWholesaler = await Wholesaler.findOne({
@@ -48,7 +51,7 @@ router.post('/wholesaler/signup', async (req, res) => {
     }
 
     // Verify GST (optional - can be done async)
-    // const gstValid = await verifyGST(gst_number);
+    // const gstValid = await verifyGST(normalizedGstNumber);
 
     // Hash password
     const hashedPassword = await bcrypt.hash(password, 10);
@@ -60,7 +63,7 @@ router.post('/wholesaler/signup', async (req, res) => {
       email,
       phone,
       password: hashedPassword,
-      gst_number,
+      gst_number: normalizedGstNumber,
       business_address,
       city,
       state,
@@ -105,10 +108,13 @@ router.post('/retailer/signup', async (req, res) => {
       pincode
     } = req.body;
 
+    // Normalize GST number - convert empty string to undefined
+    const normalizedGstNumber = gst_number && gst_number.trim() ? gst_number.trim() : undefined;
+
     // Check if email or phone already exists
     const existingChecks = [{ email }, { phone }];
-    if (gst_number) {
-      existingChecks.push({ gst_number });
+    if (normalizedGstNumber) {
+      existingChecks.push({ gst_number: normalizedGstNumber });
     }
     
     const existingRetailer = await Retailer.findOne({
@@ -129,7 +135,7 @@ router.post('/retailer/signup', async (req, res) => {
       email,
       phone,
       password: hashedPassword,
-      gst_number,
+      gst_number: normalizedGstNumber,
       business_address,
       city,
       state,

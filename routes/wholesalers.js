@@ -77,10 +77,13 @@ router.post('/add-retailer', verifyToken, isWholesaler, async (req, res) => {
       pincode
     } = req.body;
 
-    // Validation
-    if (!business_name || !owner_name || !email || !phone || !password || !gst_number) {
+    // Validation (GST is now optional)
+    if (!business_name || !owner_name || !email || !phone || !password) {
       return res.status(400).json({ error: 'All required fields must be provided' });
     }
+
+    // Normalize GST number - convert empty string to undefined
+    const normalizedGstNumber = gst_number && gst_number.trim() ? gst_number.trim().toUpperCase() : undefined;
 
     // Check if email already exists
     const existingEmail = await Retailer.findOne({ email: email.toLowerCase() });
@@ -94,10 +97,12 @@ router.post('/add-retailer', verifyToken, isWholesaler, async (req, res) => {
       return res.status(400).json({ error: 'Phone number already registered' });
     }
 
-    // Check if GST number already exists
-    const existingGST = await Retailer.findOne({ gst_number: gst_number.toUpperCase() });
-    if (existingGST) {
-      return res.status(400).json({ error: 'GST number already registered' });
+    // Check if GST number already exists (only if GST is provided)
+    if (normalizedGstNumber) {
+      const existingGST = await Retailer.findOne({ gst_number: normalizedGstNumber });
+      if (existingGST) {
+        return res.status(400).json({ error: 'GST number already registered' });
+      }
     }
 
     // Hash password
@@ -110,7 +115,7 @@ router.post('/add-retailer', verifyToken, isWholesaler, async (req, res) => {
       email: email.toLowerCase(),
       phone,
       password: hashedPassword,
-      gst_number: gst_number.toUpperCase(),
+      gst_number: normalizedGstNumber,
       business_address,
       city,
       state,
