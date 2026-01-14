@@ -64,12 +64,7 @@ const productSchema = new mongoose.Schema({
   },
   pricing_tiers: {
     type: [priceTierSchema],
-    validate: {
-      validator: function(tiers) {
-        return tiers && tiers.length > 0;
-      },
-      message: 'At least one pricing tier is required'
-    }
+    default: []
   },
   base_price: {
     type: Number,
