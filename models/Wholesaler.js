@@ -29,8 +29,8 @@ const wholesalerSchema = new mongoose.Schema({
   },
   gst_number: {
     type: String,
-    required: true,
-    unique: true,
+    required: false,
+    sparse: true,
     uppercase: true
   },
   business_address: {

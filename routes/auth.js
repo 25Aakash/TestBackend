@@ -34,8 +34,13 @@ router.post('/wholesaler/signup', async (req, res) => {
     } = req.body;
 
     // Check if email or phone already exists
+    const existingChecks = [{ email }, { phone }];
+    if (gst_number) {
+      existingChecks.push({ gst_number });
+    }
+    
     const existingWholesaler = await Wholesaler.findOne({
-      $or: [{ email }, { phone }, { gst_number }]
+      $or: existingChecks
     });
 
     if (existingWholesaler) {
@@ -101,8 +106,13 @@ router.post('/retailer/signup', async (req, res) => {
     } = req.body;
 
     // Check if email or phone already exists
+    const existingChecks = [{ email }, { phone }];
+    if (gst_number) {
+      existingChecks.push({ gst_number });
+    }
+    
     const existingRetailer = await Retailer.findOne({
-      $or: [{ email }, { phone }, { gst_number }]
+      $or: existingChecks
     });
 
     if (existingRetailer) {
