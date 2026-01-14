@@ -13,8 +13,8 @@ const retailerSchema = new mongoose.Schema({
   },
   email: {
     type: String,
-    required: true,
-    unique: true,
+    required: false,
+    sparse: true,
     lowercase: true,
     trim: true
   },
@@ -22,6 +22,16 @@ const retailerSchema = new mongoose.Schema({
     type: String,
     required: true,
     unique: true
+  },
+  phone_alt1: {
+    type: String,
+    required: false,
+    default: ''
+  },
+  phone_alt2: {
+    type: String,
+    required: false,
+    default: ''
   },
   password: {
     type: String,
