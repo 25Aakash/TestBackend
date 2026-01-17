@@ -104,11 +104,6 @@ router.post('/', verifyToken, isWholesaler, async (req, res) => {
       images
     } = req.body;
 
-    // Validate pricing tiers
-    if (!pricing_tiers || pricing_tiers.length === 0) {
-      return res.status(400).json({ error: 'At least one pricing tier is required' });
-    }
-
     const product = new Product({
       wholesaler_id: req.user.userId,
       name,
@@ -120,7 +115,7 @@ router.post('/', verifyToken, isWholesaler, async (req, res) => {
       unit_type,
       moq: moq || 1,
       stock_quantity: stock_quantity || 0,
-      pricing_tiers,
+      pricing_tiers: pricing_tiers || [],
       base_price,
       mrp,
       gst_percentage: gst_percentage || 18,
