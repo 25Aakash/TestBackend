@@ -177,14 +177,25 @@ router.post('/login', async (req, res) => {
     const { email, password, userType } = req.body;
 
     if (!email || !password || !userType) {
-      return res.status(400).json({ error: 'Email, password, and user type are required' });
+      return res.status(400).json({ error: 'Email/Phone, password, and user type are required' });
     }
 
     let user;
+    // Check if input is email or phone number
+    const isPhone = /^\d{10}$/.test(email); // Check if it's a 10-digit phone number
+    
     if (userType === 'wholesaler') {
-      user = await Wholesaler.findOne({ email });
+      if (isPhone) {
+        user = await Wholesaler.findOne({ phone: email });
+      } else {
+        user = await Wholesaler.findOne({ email });
+      }
     } else if (userType === 'retailer') {
-      user = await Retailer.findOne({ email });
+      if (isPhone) {
+        user = await Retailer.findOne({ phone: email });
+      } else {
+        user = await Retailer.findOne({ email });
+      }
     } else {
       return res.status(400).json({ error: 'Invalid user type' });
     }
