@@ -11,6 +11,7 @@ const wholesalerRoutes = require('./routes/wholesalers');
 const gstRoutes = require('./routes/gst');
 const connectionRoutes = require('./routes/connections');
 const categoryRoutes = require('./routes/categories');
+const brandRoutes = require('./routes/brands');
 
 const app = express();
 
@@ -28,6 +29,7 @@ app.use('/api/wholesalers', wholesalerRoutes);
 app.use('/api/gst', gstRoutes);
 app.use('/api/connections', connectionRoutes);
 app.use('/api/categories', categoryRoutes);
+app.use('/api/brands', brandRoutes);
 
 // Health check
 app.get('/api/health', (req, res) => {
