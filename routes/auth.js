@@ -35,9 +35,13 @@ router.post('/wholesaler/signup', async (req, res) => {
 
     // Normalize GST number - convert empty string to undefined
     const normalizedGstNumber = gst_number && gst_number.trim() ? gst_number.trim() : undefined;
+    const normalizedEmail = email && email.trim() ? email.trim() : undefined;
 
     // Check if email or phone already exists
-    const existingChecks = [{ email }, { phone }];
+    const existingChecks = [{ phone }];
+    if (normalizedEmail) {
+      existingChecks.push({ email: normalizedEmail });
+    }
     if (normalizedGstNumber) {
       existingChecks.push({ gst_number: normalizedGstNumber });
     }
@@ -60,7 +64,7 @@ router.post('/wholesaler/signup', async (req, res) => {
     const wholesaler = new Wholesaler({
       business_name,
       owner_name,
-      email,
+      email: normalizedEmail,
       phone,
       password: hashedPassword,
       gst_number: normalizedGstNumber,
@@ -110,9 +114,13 @@ router.post('/retailer/signup', async (req, res) => {
 
     // Normalize GST number - convert empty string to undefined
     const normalizedGstNumber = gst_number && gst_number.trim() ? gst_number.trim() : undefined;
+    const normalizedEmail = email && email.trim() ? email.trim() : undefined;
 
     // Check if email or phone already exists
-    const existingChecks = [{ email }, { phone }];
+    const existingChecks = [{ phone }];
+    if (normalizedEmail) {
+      existingChecks.push({ email: normalizedEmail });
+    }
     if (normalizedGstNumber) {
       existingChecks.push({ gst_number: normalizedGstNumber });
     }
@@ -132,7 +140,7 @@ router.post('/retailer/signup', async (req, res) => {
     const retailer = new Retailer({
       business_name,
       owner_name,
-      email,
+      email: normalizedEmail,
       phone,
       password: hashedPassword,
       gst_number: normalizedGstNumber,
