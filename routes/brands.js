@@ -1,10 +1,10 @@
 const express = require('express');
 const router = express.Router();
 const Brand = require('../models/Brand');
-const auth = require('../middleware/auth');
+const { verifyToken } = require('../middleware/auth');
 
 // Get all brands for the logged-in wholesaler
-router.get('/', auth, async (req, res) => {
+router.get('/', verifyToken, async (req, res) => {
   try {
     if (req.user.role !== 'wholesaler') {
       return res.status(403).json({ error: 'Only wholesalers can access brands' });
@@ -21,7 +21,7 @@ router.get('/', auth, async (req, res) => {
 });
 
 // Create a new brand
-router.post('/', auth, async (req, res) => {
+router.post('/', verifyToken, async (req, res) => {
   try {
     if (req.user.role !== 'wholesaler') {
       return res.status(403).json({ error: 'Only wholesalers can create brands' });
@@ -61,7 +61,7 @@ router.post('/', auth, async (req, res) => {
 });
 
 // Update a brand
-router.put('/:id', auth, async (req, res) => {
+router.put('/:id', verifyToken, async (req, res) => {
   try {
     if (req.user.role !== 'wholesaler') {
       return res.status(403).json({ error: 'Only wholesalers can update brands' });
@@ -110,7 +110,7 @@ router.put('/:id', auth, async (req, res) => {
 });
 
 // Delete a brand
-router.delete('/:id', auth, async (req, res) => {
+router.delete('/:id', verifyToken, async (req, res) => {
   try {
     if (req.user.role !== 'wholesaler') {
       return res.status(403).json({ error: 'Only wholesalers can delete brands' });
