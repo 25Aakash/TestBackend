@@ -38,6 +38,10 @@ const retailerSchema = new mongoose.Schema({
     type: String,
     required: true
   },
+  requires_password_setup: {
+    type: Boolean,
+    default: false
+  },
   gst_number: {
     type: String,
     required: false,

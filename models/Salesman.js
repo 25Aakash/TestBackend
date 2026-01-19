@@ -27,6 +27,10 @@ const salesmanSchema = new mongoose.Schema({
     type: String,
     required: true
   },
+  requires_password_setup: {
+    type: Boolean,
+    default: false
+  },
   is_active: {
     type: Boolean,
     default: true

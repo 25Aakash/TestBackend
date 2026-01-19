@@ -34,10 +34,10 @@ router.post('/create', auth, async (req, res) => {
       return res.status(403).json({ error: 'Only wholesalers can create salesmen' });
     }
 
-    const { name, email, phone, password } = req.body;
+    const { name, email, phone } = req.body;
 
-    if (!name || !email || !phone || !password) {
-      return res.status(400).json({ error: 'All fields are required' });
+    if (!name || !email || !phone) {
+      return res.status(400).json({ error: 'Name, email, and phone are required' });
     }
 
     // Check if email or phone already exists
@@ -49,21 +49,22 @@ router.post('/create', auth, async (req, res) => {
       return res.status(400).json({ error: 'Email or phone already registered' });
     }
 
-    // Hash password
-    const hashedPassword = await bcrypt.hash(password, 10);
+    // Use phone as temporary password - they will set their own on first login
+    const hashedPassword = await bcrypt.hash(phone, 10);
 
     const salesman = new Salesman({
       wholesaler_id: req.userId,
       name,
       email: email.toLowerCase().trim(),
       phone,
-      password: hashedPassword
+      password: hashedPassword,
+      requires_password_setup: true
     });
 
     await salesman.save();
 
     res.status(201).json({
-      message: 'Salesman created successfully',
+      message: 'Salesman created successfully. They can login with their phone number as temporary password.',
       salesman: {
         _id: salesman._id,
         name: salesman.name,
@@ -277,8 +278,8 @@ router.post('/add-retailer', auth, async (req, res) => {
         });
       }
     } else {
-      // Create new retailer
-      const hashedPassword = await bcrypt.hash(password || phone, 10); // Use phone as default password
+      // Create new retailer - use phone as temp password, they will set their own on first login
+      const hashedPassword = await bcrypt.hash(phone, 10);
 
       retailer = new Retailer({
         business_name,
@@ -290,7 +291,8 @@ router.post('/add-retailer', auth, async (req, res) => {
         business_address,
         city,
         state,
-        pincode
+        pincode,
+        requires_password_setup: true
       });
 
       await retailer.save();

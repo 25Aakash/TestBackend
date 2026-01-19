@@ -217,6 +217,23 @@ router.post('/login', async (req, res) => {
       return res.status(401).json({ error: 'Invalid credentials' });
     }
 
+    // Check if user needs to set password (for users added by wholesaler/salesman)
+    if (user.requires_password_setup) {
+      // Generate a temporary token for password setup
+      const tempToken = jwt.sign(
+        { userId: user._id, userType, purpose: 'password_setup' },
+        process.env.JWT_SECRET,
+        { expiresIn: '1h' }
+      );
+
+      return res.json({
+        requiresPasswordSetup: true,
+        tempToken,
+        userType,
+        message: 'Please set your password to continue'
+      });
+    }
+
     // Generate token
     const token = generateToken(user._id, userType);
 
@@ -245,6 +262,88 @@ router.post('/login', async (req, res) => {
   } catch (error) {
     console.error('Login error:', error);
     res.status(500).json({ error: 'Server error during login' });
+  }
+});
+
+// Set password (for users who need to set their password on first login)
+router.post('/set-password', async (req, res) => {
+  try {
+    const { tempToken, newPassword } = req.body;
+
+    if (!tempToken || !newPassword) {
+      return res.status(400).json({ error: 'Token and new password are required' });
+    }
+
+    if (newPassword.length < 6) {
+      return res.status(400).json({ error: 'Password must be at least 6 characters' });
+    }
+
+    // Verify the temp token
+    let decoded;
+    try {
+      decoded = jwt.verify(tempToken, process.env.JWT_SECRET);
+    } catch (err) {
+      return res.status(401).json({ error: 'Invalid or expired token. Please login again.' });
+    }
+
+    if (decoded.purpose !== 'password_setup') {
+      return res.status(401).json({ error: 'Invalid token type' });
+    }
+
+    const { userId, userType } = decoded;
+
+    // Find the user
+    let user;
+    if (userType === 'retailer') {
+      user = await Retailer.findById(userId);
+    } else if (userType === 'salesman') {
+      user = await Salesman.findById(userId);
+    } else {
+      return res.status(400).json({ error: 'Invalid user type' });
+    }
+
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    if (!user.requires_password_setup) {
+      return res.status(400).json({ error: 'Password already set' });
+    }
+
+    // Hash and update password
+    const hashedPassword = await bcrypt.hash(newPassword, 10);
+    user.password = hashedPassword;
+    user.requires_password_setup = false;
+    await user.save();
+
+    // Generate regular token
+    const token = generateToken(user._id, userType);
+
+    // Build response based on user type
+    let userResponse = {
+      _id: user._id,
+      email: user.email,
+      phone: user.phone,
+      userType
+    };
+
+    if (userType === 'salesman') {
+      userResponse.name = user.name;
+      userResponse.wholesaler_id = user.wholesaler_id;
+    } else {
+      userResponse.business_name = user.business_name;
+      userResponse.owner_name = user.owner_name;
+      userResponse.gst_number = user.gst_number;
+    }
+
+    res.json({
+      message: 'Password set successfully',
+      token,
+      user: userResponse
+    });
+  } catch (error) {
+    console.error('Set password error:', error);
+    res.status(500).json({ error: 'Server error while setting password' });
   }
 });
 
