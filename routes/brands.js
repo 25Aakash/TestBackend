@@ -27,7 +27,7 @@ router.post('/', verifyToken, async (req, res) => {
       return res.status(403).json({ error: 'Only wholesalers can create brands' });
     }
 
-    const { name, description } = req.body;
+    const { name, description, image } = req.body;
 
     if (!name || !name.trim()) {
       return res.status(400).json({ error: 'Brand name is required' });
@@ -46,7 +46,8 @@ router.post('/', verifyToken, async (req, res) => {
     const brand = new Brand({
       wholesaler_id: req.user.userId,
       name: name.trim(),
-      description: description || ''
+      description: description || '',
+      image: image || ''
     });
 
     await brand.save();
@@ -67,7 +68,7 @@ router.put('/:id', verifyToken, async (req, res) => {
       return res.status(403).json({ error: 'Only wholesalers can update brands' });
     }
 
-    const { name, description } = req.body;
+    const { name, description, image } = req.body;
 
     if (!name || !name.trim()) {
       return res.status(400).json({ error: 'Brand name is required' });
@@ -97,6 +98,9 @@ router.put('/:id', verifyToken, async (req, res) => {
 
     brand.name = name.trim();
     brand.description = description || '';
+    if (image !== undefined) {
+      brand.image = image;
+    }
     await brand.save();
 
     res.json(brand);

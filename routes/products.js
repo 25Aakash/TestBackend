@@ -1,9 +1,54 @@
 const express = require('express');
 const Product = require('../models/Product');
 const Connection = require('../models/Connection');
+const Brand = require('../models/Brand');
 const { verifyToken, isWholesaler, isRetailer } = require('../middleware/auth');
 
 const router = express.Router();
+
+// Helper function to attach brand details to products
+const attachBrandDetails = async (products) => {
+  // Get unique wholesaler IDs and brand names
+  const brandLookups = products
+    .filter(p => p.brand && p.wholesaler_id)
+    .map(p => ({
+      wholesaler_id: p.wholesaler_id._id || p.wholesaler_id,
+      brand: p.brand
+    }));
+
+  if (brandLookups.length === 0) return products;
+
+  // Fetch all relevant brands in one query
+  const brands = await Brand.find({
+    $or: brandLookups.map(bl => ({
+      wholesaler_id: bl.wholesaler_id,
+      name: bl.brand
+    }))
+  });
+
+  // Create a lookup map
+  const brandMap = {};
+  brands.forEach(b => {
+    const key = `${b.wholesaler_id}_${b.name}`;
+    brandMap[key] = {
+      _id: b._id,
+      name: b.name,
+      image: b.image || '',
+      description: b.description || ''
+    };
+  });
+
+  // Attach brand details to products
+  return products.map(p => {
+    const productObj = p.toObject ? p.toObject() : p;
+    const wholesalerId = productObj.wholesaler_id?._id || productObj.wholesaler_id;
+    const key = `${wholesalerId}_${productObj.brand}`;
+    if (brandMap[key]) {
+      productObj.brandDetails = brandMap[key];
+    }
+    return productObj;
+  });
+};
 
 // Get all products (filtered by connections for retailers)
 router.get('/', verifyToken, async (req, res) => {
@@ -45,7 +90,10 @@ router.get('/', verifyToken, async (req, res) => {
       .populate('wholesaler_id', 'business_name city state')
       .sort({ createdAt: -1 });
     
-    res.json(products);
+    // Attach brand details with images
+    const productsWithBrands = await attachBrandDetails(products);
+    
+    res.json(productsWithBrands);
   } catch (error) {
     console.error('Get products error:', error);
     res.status(500).json({ error: 'Server error' });
@@ -62,7 +110,10 @@ router.get('/:id', async (req, res) => {
       return res.status(404).json({ error: 'Product not found' });
     }
     
-    res.json(product);
+    // Attach brand details if product has a brand
+    const productWithBrand = await attachBrandDetails([product]);
+    
+    res.json(productWithBrand[0]);
   } catch (error) {
     console.error('Get product error:', error);
     res.status(500).json({ error: 'Server error' });
