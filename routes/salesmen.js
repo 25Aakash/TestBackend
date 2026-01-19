@@ -3,20 +3,20 @@ const bcrypt = require('bcryptjs');
 const Salesman = require('../models/Salesman');
 const Retailer = require('../models/Retailer');
 const Connection = require('../models/Connection');
-const auth = require('../middleware/auth');
+const { verifyToken, isWholesaler, isSalesman, isWholesalerOrSalesman } = require('../middleware/auth');
 
 const router = express.Router();
 
 // ==================== WHOLESALER ROUTES ====================
 
 // Get all salesmen for a wholesaler
-router.get('/my-salesmen', auth, async (req, res) => {
+router.get('/my-salesmen', verifyToken, async (req, res) => {
   try {
-    if (req.userType !== 'wholesaler') {
+    if (req.user.userType !== 'wholesaler') {
       return res.status(403).json({ error: 'Only wholesalers can access this' });
     }
 
-    const salesmen = await Salesman.find({ wholesaler_id: req.userId })
+    const salesmen = await Salesman.find({ wholesaler_id: req.user.userId })
       .select('-password')
       .sort({ created_at: -1 });
 
@@ -28,9 +28,9 @@ router.get('/my-salesmen', auth, async (req, res) => {
 });
 
 // Create a new salesman (wholesaler only)
-router.post('/create', auth, async (req, res) => {
+router.post('/create', verifyToken, async (req, res) => {
   try {
-    if (req.userType !== 'wholesaler') {
+    if (req.user.userType !== 'wholesaler') {
       return res.status(403).json({ error: 'Only wholesalers can create salesmen' });
     }
 
@@ -53,7 +53,7 @@ router.post('/create', auth, async (req, res) => {
     const hashedPassword = await bcrypt.hash(phone, 10);
 
     const salesman = new Salesman({
-      wholesaler_id: req.userId,
+      wholesaler_id: req.user.userId,
       name,
       email: email.toLowerCase().trim(),
       phone,
@@ -81,9 +81,9 @@ router.post('/create', auth, async (req, res) => {
 });
 
 // Update salesman (wholesaler only)
-router.put('/:id', auth, async (req, res) => {
+router.put('/:id', verifyToken, async (req, res) => {
   try {
-    if (req.userType !== 'wholesaler') {
+    if (req.user.userType !== 'wholesaler') {
       return res.status(403).json({ error: 'Only wholesalers can update salesmen' });
     }
 
@@ -91,7 +91,7 @@ router.put('/:id', auth, async (req, res) => {
 
     const salesman = await Salesman.findOne({
       _id: req.params.id,
-      wholesaler_id: req.userId
+      wholesaler_id: req.user.userId
     });
 
     if (!salesman) {
@@ -141,15 +141,15 @@ router.put('/:id', auth, async (req, res) => {
 });
 
 // Delete salesman (wholesaler only)
-router.delete('/:id', auth, async (req, res) => {
+router.delete('/:id', verifyToken, async (req, res) => {
   try {
-    if (req.userType !== 'wholesaler') {
+    if (req.user.userType !== 'wholesaler') {
       return res.status(403).json({ error: 'Only wholesalers can delete salesmen' });
     }
 
     const salesman = await Salesman.findOneAndDelete({
       _id: req.params.id,
-      wholesaler_id: req.userId
+      wholesaler_id: req.user.userId
     });
 
     if (!salesman) {
@@ -164,15 +164,15 @@ router.delete('/:id', auth, async (req, res) => {
 });
 
 // Get retailers added by salesmen (pending approval) - wholesaler only
-router.get('/pending-retailers', auth, async (req, res) => {
+router.get('/pending-retailers', verifyToken, async (req, res) => {
   try {
-    if (req.userType !== 'wholesaler') {
+    if (req.user.userType !== 'wholesaler') {
       return res.status(403).json({ error: 'Only wholesalers can access this' });
     }
 
     // Find connections requested by salesmen that are pending
     const pendingConnections = await Connection.find({
-      wholesaler_id: req.userId,
+      wholesaler_id: req.user.userId,
       requested_by: 'salesman',
       status: 'pending'
     }).populate('retailer_id', 'business_name owner_name phone city');
@@ -202,13 +202,13 @@ router.get('/pending-retailers', auth, async (req, res) => {
 // ==================== SALESMAN ROUTES ====================
 
 // Get salesman profile
-router.get('/profile', auth, async (req, res) => {
+router.get('/profile', verifyToken, async (req, res) => {
   try {
-    if (req.userType !== 'salesman') {
+    if (req.user.userType !== 'salesman') {
       return res.status(403).json({ error: 'Only salesmen can access this' });
     }
 
-    const salesman = await Salesman.findById(req.userId)
+    const salesman = await Salesman.findById(req.user.userId)
       .select('-password')
       .populate('wholesaler_id', 'business_name');
 
@@ -224,9 +224,9 @@ router.get('/profile', auth, async (req, res) => {
 });
 
 // Add a new retailer (salesman only)
-router.post('/add-retailer', auth, async (req, res) => {
+router.post('/add-retailer', verifyToken, async (req, res) => {
   try {
-    if (req.userType !== 'salesman') {
+    if (req.user.userType !== 'salesman') {
       return res.status(403).json({ error: 'Only salesmen can add retailers' });
     }
 
@@ -245,7 +245,7 @@ router.post('/add-retailer', auth, async (req, res) => {
     } = req.body;
 
     // Get salesman to find wholesaler
-    const salesman = await Salesman.findById(req.userId);
+    const salesman = await Salesman.findById(req.user.userId);
     if (!salesman) {
       return res.status(404).json({ error: 'Salesman not found' });
     }
@@ -304,7 +304,7 @@ router.post('/add-retailer', auth, async (req, res) => {
       retailer_id: retailer._id,
       status: 'pending',
       requested_by: 'salesman',
-      salesman_id: req.userId,
+      salesman_id: req.user.userId,
       message: message || `Added by ${salesman.name}`
     });
 
@@ -327,20 +327,20 @@ router.post('/add-retailer', auth, async (req, res) => {
 });
 
 // Get retailers added by this salesman
-router.get('/my-retailers', auth, async (req, res) => {
+router.get('/my-retailers', verifyToken, async (req, res) => {
   try {
-    if (req.userType !== 'salesman') {
+    if (req.user.userType !== 'salesman') {
       return res.status(403).json({ error: 'Only salesmen can access this' });
     }
 
-    const salesman = await Salesman.findById(req.userId);
+    const salesman = await Salesman.findById(req.user.userId);
     if (!salesman) {
       return res.status(404).json({ error: 'Salesman not found' });
     }
 
     const connections = await Connection.find({
       wholesaler_id: salesman.wholesaler_id,
-      salesman_id: req.userId
+      salesman_id: req.user.userId
     }).populate('retailer_id', 'business_name owner_name phone city state');
 
     const retailers = connections.map(conn => ({
