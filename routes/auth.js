@@ -16,6 +16,41 @@ const generateToken = (userId, userType) => {
   );
 };
 
+// Generate unique code from business name
+const generateUniqueCode = async (businessName) => {
+  // Extract initials from business name
+  const words = businessName.trim().split(/\s+/);
+  let baseCode = '';
+  
+  if (words.length === 1) {
+    // Single word: take first 2-3 characters
+    baseCode = words[0].substring(0, 3).toUpperCase();
+  } else {
+    // Multiple words: take first letter of each word (up to 4)
+    baseCode = words
+      .slice(0, 4)
+      .map(word => word.charAt(0))
+      .join('')
+      .toUpperCase();
+  }
+  
+  // Ensure minimum 2 characters
+  if (baseCode.length < 2) {
+    baseCode = businessName.substring(0, 2).toUpperCase();
+  }
+  
+  // Check if code exists, if so add number suffix
+  let uniqueCode = baseCode;
+  let counter = 1;
+  
+  while (await Wholesaler.findOne({ unique_code: uniqueCode })) {
+    uniqueCode = `${baseCode}${counter}`;
+    counter++;
+  }
+  
+  return uniqueCode;
+};
+
 // Wholesaler Signup
 router.post('/wholesaler/signup', async (req, res) => {
   try {
@@ -60,9 +95,13 @@ router.post('/wholesaler/signup', async (req, res) => {
     // Hash password
     const hashedPassword = await bcrypt.hash(password, 10);
 
+    // Generate unique code for this wholesaler
+    const uniqueCode = await generateUniqueCode(business_name);
+
     // Create wholesaler
     const wholesaler = new Wholesaler({
       business_name,
+      unique_code: uniqueCode,
       owner_name,
       email: normalizedEmail,
       phone,
@@ -86,6 +125,7 @@ router.post('/wholesaler/signup', async (req, res) => {
       user: {
         _id: wholesaler._id,
         business_name: wholesaler.business_name,
+        unique_code: wholesaler.unique_code,
         email: wholesaler.email,
         userType: 'wholesaler'
       }
@@ -213,18 +253,26 @@ router.post('/login', async (req, res) => {
     // Generate token
     const token = generateToken(user._id, userType);
 
+    // Build user response
+    const userResponse = {
+      _id: user._id,
+      business_name: user.business_name,
+      owner_name: user.owner_name,
+      email: user.email,
+      phone: user.phone,
+      gst_number: user.gst_number,
+      userType
+    };
+
+    // Add unique_code for wholesalers
+    if (userType === 'wholesaler' && user.unique_code) {
+      userResponse.unique_code = user.unique_code;
+    }
+
     res.json({
       message: 'Login successful',
       token,
-      user: {
-        _id: user._id,
-        business_name: user.business_name,
-        owner_name: user.owner_name,
-        email: user.email,
-        phone: user.phone,
-        gst_number: user.gst_number,
-        userType
-      }
+      user: userResponse
     });
   } catch (error) {
     console.error('Login error:', error);
