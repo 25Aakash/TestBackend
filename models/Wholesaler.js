@@ -6,13 +6,6 @@ const wholesalerSchema = new mongoose.Schema({
     required: true,
     trim: true
   },
-  unique_code: {
-    type: String,
-    required: true,
-    unique: true,
-    uppercase: true,
-    trim: true
-  },
   owner_name: {
     type: String,
     required: true,
