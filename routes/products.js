@@ -224,12 +224,12 @@ router.put('/:id', verifyToken, isWholesalerOrSalesman, async (req, res) => {
   }
 });
 
-// Delete product (wholesaler or salesman)
-router.delete('/:id', verifyToken, isWholesalerOrSalesman, async (req, res) => {
+// Delete product (wholesaler only - salesmen cannot delete)
+router.delete('/:id', verifyToken, isWholesaler, async (req, res) => {
   try {
     const product = await Product.findOneAndDelete({
       _id: req.params.id,
-      wholesaler_id: req.effectiveWholesalerId
+      wholesaler_id: req.user.userId
     });
 
     if (!product) {

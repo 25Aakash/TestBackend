@@ -131,17 +131,16 @@ router.put('/:id', verifyToken, async (req, res) => {
   }
 });
 
-// Delete a brand
+// Delete a brand (wholesaler only - salesmen cannot delete)
 router.delete('/:id', verifyToken, async (req, res) => {
   try {
-    if (req.user.userType !== 'wholesaler' && req.user.userType !== 'salesman') {
-      return res.status(403).json({ error: 'Only wholesalers or salesmen can delete brands' });
+    if (req.user.userType !== 'wholesaler') {
+      return res.status(403).json({ error: 'Only wholesalers can delete brands' });
     }
 
-    const wholesalerId = await getEffectiveWholesalerId(req);
     const brand = await Brand.findOneAndDelete({
       _id: req.params.id,
-      wholesaler_id: wholesalerId
+      wholesaler_id: req.user.userId
     });
 
     if (!brand) {
