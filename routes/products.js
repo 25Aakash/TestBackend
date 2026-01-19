@@ -2,7 +2,7 @@ const express = require('express');
 const Product = require('../models/Product');
 const Connection = require('../models/Connection');
 const Brand = require('../models/Brand');
-const { verifyToken, isWholesaler, isRetailer } = require('../middleware/auth');
+const { verifyToken, isWholesaler, isWholesalerOrSalesman, isRetailer } = require('../middleware/auth');
 
 const router = express.Router();
 
@@ -120,10 +120,10 @@ router.get('/:id', async (req, res) => {
   }
 });
 
-// Get wholesaler's products (requires wholesaler auth)
-router.get('/my/products', verifyToken, isWholesaler, async (req, res) => {
+// Get wholesaler's products (requires wholesaler or salesman auth)
+router.get('/my/products', verifyToken, isWholesalerOrSalesman, async (req, res) => {
   try {
-    const products = await Product.find({ wholesaler_id: req.user.userId })
+    const products = await Product.find({ wholesaler_id: req.effectiveWholesalerId })
       .sort({ createdAt: -1 });
     
     res.json(products);
@@ -133,8 +133,8 @@ router.get('/my/products', verifyToken, isWholesaler, async (req, res) => {
   }
 });
 
-// Create product (wholesaler only)
-router.post('/', verifyToken, isWholesaler, async (req, res) => {
+// Create product (wholesaler or salesman)
+router.post('/', verifyToken, isWholesalerOrSalesman, async (req, res) => {
   try {
     const {
       name,
@@ -156,7 +156,7 @@ router.post('/', verifyToken, isWholesaler, async (req, res) => {
     } = req.body;
 
     const product = new Product({
-      wholesaler_id: req.user.userId,
+      wholesaler_id: req.effectiveWholesalerId,
       name,
       description,
       category,
@@ -187,12 +187,12 @@ router.post('/', verifyToken, isWholesaler, async (req, res) => {
   }
 });
 
-// Update product (wholesaler only)
-router.put('/:id', verifyToken, isWholesaler, async (req, res) => {
+// Update product (wholesaler or salesman)
+router.put('/:id', verifyToken, isWholesalerOrSalesman, async (req, res) => {
   try {
     const product = await Product.findOne({
       _id: req.params.id,
-      wholesaler_id: req.user.userId
+      wholesaler_id: req.effectiveWholesalerId
     });
 
     if (!product) {
@@ -224,12 +224,12 @@ router.put('/:id', verifyToken, isWholesaler, async (req, res) => {
   }
 });
 
-// Delete product (wholesaler only)
-router.delete('/:id', verifyToken, isWholesaler, async (req, res) => {
+// Delete product (wholesaler or salesman)
+router.delete('/:id', verifyToken, isWholesalerOrSalesman, async (req, res) => {
   try {
     const product = await Product.findOneAndDelete({
       _id: req.params.id,
-      wholesaler_id: req.user.userId
+      wholesaler_id: req.effectiveWholesalerId
     });
 
     if (!product) {

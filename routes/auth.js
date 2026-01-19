@@ -3,6 +3,7 @@ const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const Wholesaler = require('../models/Wholesaler');
 const Retailer = require('../models/Retailer');
+const Salesman = require('../models/Salesman');
 const { verifyGST } = require('../services/gstService');
 
 const router = express.Router();
@@ -196,6 +197,12 @@ router.post('/login', async (req, res) => {
       } else {
         user = await Retailer.findOne({ email });
       }
+    } else if (userType === 'salesman') {
+      if (isPhone) {
+        user = await Salesman.findOne({ phone: email, is_active: true });
+      } else {
+        user = await Salesman.findOne({ email, is_active: true });
+      }
     } else {
       return res.status(400).json({ error: 'Invalid user type' });
     }
@@ -213,18 +220,27 @@ router.post('/login', async (req, res) => {
     // Generate token
     const token = generateToken(user._id, userType);
 
+    // Build response based on user type
+    let userResponse = {
+      _id: user._id,
+      email: user.email,
+      phone: user.phone,
+      userType
+    };
+
+    if (userType === 'salesman') {
+      userResponse.name = user.name;
+      userResponse.wholesaler_id = user.wholesaler_id;
+    } else {
+      userResponse.business_name = user.business_name;
+      userResponse.owner_name = user.owner_name;
+      userResponse.gst_number = user.gst_number;
+    }
+
     res.json({
       message: 'Login successful',
       token,
-      user: {
-        _id: user._id,
-        business_name: user.business_name,
-        owner_name: user.owner_name,
-        email: user.email,
-        phone: user.phone,
-        gst_number: user.gst_number,
-        userType
-      }
+      user: userResponse
     });
   } catch (error) {
     console.error('Login error:', error);

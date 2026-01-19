@@ -12,6 +12,7 @@ const gstRoutes = require('./routes/gst');
 const connectionRoutes = require('./routes/connections');
 const categoryRoutes = require('./routes/categories');
 const brandRoutes = require('./routes/brands');
+const salesmenRoutes = require('./routes/salesmen');
 
 const app = express();
 
@@ -30,6 +31,7 @@ app.use('/api/gst', gstRoutes);
 app.use('/api/connections', connectionRoutes);
 app.use('/api/categories', categoryRoutes);
 app.use('/api/brands', brandRoutes);
+app.use('/api/salesmen', salesmenRoutes);
 
 // Health check
 app.get('/api/health', (req, res) => {

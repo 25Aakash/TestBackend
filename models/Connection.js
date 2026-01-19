@@ -11,6 +11,11 @@ const connectionSchema = new mongoose.Schema({
     ref: 'Retailer',
     required: true
   },
+  salesman_id: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Salesman',
+    default: null
+  },
   status: {
     type: String,
     enum: ['pending', 'approved', 'rejected'],
@@ -18,7 +23,7 @@ const connectionSchema = new mongoose.Schema({
   },
   requested_by: {
     type: String,
-    enum: ['retailer', 'wholesaler'],
+    enum: ['retailer', 'wholesaler', 'salesman'],
     required: true
   },
   message: {
