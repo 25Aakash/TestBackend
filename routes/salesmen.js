@@ -36,17 +36,22 @@ router.post('/create', verifyToken, async (req, res) => {
 
     const { name, email, phone } = req.body;
 
-    if (!name || !email || !phone) {
-      return res.status(400).json({ error: 'Name, email, and phone are required' });
+    if (!name || !phone) {
+      return res.status(400).json({ error: 'Name and phone are required' });
     }
 
-    // Check if email or phone already exists
-    const existingSalesman = await Salesman.findOne({
-      $or: [{ email }, { phone }]
-    });
+    // Check if phone already exists
+    const existingByPhone = await Salesman.findOne({ phone });
+    if (existingByPhone) {
+      return res.status(400).json({ error: 'Phone number already registered' });
+    }
 
-    if (existingSalesman) {
-      return res.status(400).json({ error: 'Email or phone already registered' });
+    // Check if email exists (only if email is provided)
+    if (email && email.trim()) {
+      const existingByEmail = await Salesman.findOne({ email: email.toLowerCase().trim() });
+      if (existingByEmail) {
+        return res.status(400).json({ error: 'Email already registered' });
+      }
     }
 
     // Use phone as temporary password - they will set their own on first login
@@ -55,7 +60,7 @@ router.post('/create', verifyToken, async (req, res) => {
     const salesman = new Salesman({
       wholesaler_id: req.user.userId,
       name,
-      email: email.toLowerCase().trim(),
+      email: email && email.trim() ? email.toLowerCase().trim() : undefined,
       phone,
       password: hashedPassword,
       requires_password_setup: true
