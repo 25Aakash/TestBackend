@@ -173,13 +173,25 @@ router.delete('/:connectionId', verifyToken, async (req, res) => {
       return res.status(404).json({ error: 'Connection not found' });
     }
 
-    // Check if user is authorized (either wholesaler or retailer in this connection)
-    const isAuthorized = 
+    // Check if user is authorized (either wholesaler, retailer, or salesman with permission)
+    let isAuthorized = 
       connection.wholesaler_id.toString() === req.user.userId ||
       connection.retailer_id.toString() === req.user.userId;
 
+    // Check if salesman with delete permission
+    if (!isAuthorized && req.user.userType === 'salesman') {
+      const Salesman = require('../models/Salesman');
+      const salesman = await Salesman.findById(req.user.userId);
+      
+      if (salesman && 
+          salesman.wholesaler_id.toString() === connection.wholesaler_id.toString() &&
+          salesman.permissions?.can_delete_retailers) {
+        isAuthorized = true;
+      }
+    }
+
     if (!isAuthorized) {
-      return res.status(403).json({ error: 'Unauthorized' });
+      return res.status(403).json({ error: 'You do not have permission to delete this connection' });
     }
 
     await Connection.findByIdAndDelete(req.params.connectionId);

@@ -224,12 +224,34 @@ router.put('/:id', verifyToken, isWholesalerOrSalesman, async (req, res) => {
   }
 });
 
-// Delete product (wholesaler only - salesmen cannot delete)
-router.delete('/:id', verifyToken, isWholesaler, async (req, res) => {
+// Delete product (wholesaler or salesman with permission)
+router.delete('/:id', verifyToken, async (req, res) => {
   try {
+    let wholesalerId;
+    
+    if (req.user.userType === 'wholesaler') {
+      wholesalerId = req.user.userId;
+    } else if (req.user.userType === 'salesman') {
+      // Check if salesman has delete permission
+      const Salesman = require('../models/Salesman');
+      const salesman = await Salesman.findById(req.user.userId);
+      
+      if (!salesman) {
+        return res.status(404).json({ error: 'Salesman not found' });
+      }
+      
+      if (!salesman.permissions?.can_delete_products) {
+        return res.status(403).json({ error: 'You do not have permission to delete products' });
+      }
+      
+      wholesalerId = salesman.wholesaler_id;
+    } else {
+      return res.status(403).json({ error: 'Unauthorized' });
+    }
+
     const product = await Product.findOneAndDelete({
       _id: req.params.id,
-      wholesaler_id: req.user.userId
+      wholesaler_id: wholesalerId
     });
 
     if (!product) {

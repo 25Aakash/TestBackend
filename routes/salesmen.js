@@ -34,7 +34,7 @@ router.post('/create', verifyToken, async (req, res) => {
       return res.status(403).json({ error: 'Only wholesalers can create salesmen' });
     }
 
-    const { name, email, phone } = req.body;
+    const { name, email, phone, permissions } = req.body;
 
     if (!name || !phone) {
       return res.status(400).json({ error: 'Name and phone are required' });
@@ -57,13 +57,25 @@ router.post('/create', verifyToken, async (req, res) => {
     // Use phone as temporary password - they will set their own on first login
     const hashedPassword = await bcrypt.hash(phone, 10);
 
+    // Default permissions if not provided
+    const salesmanPermissions = permissions || {
+      can_add_products: true,
+      can_delete_products: false,
+      can_add_brands: true,
+      can_add_retailers: true,
+      can_delete_retailers: false,
+      can_view_all_retailers: true,
+      can_place_orders: true
+    };
+
     const salesman = new Salesman({
       wholesaler_id: req.user.userId,
       name,
       email: email && email.trim() ? email.toLowerCase().trim() : undefined,
       phone,
       password: hashedPassword,
-      requires_password_setup: true
+      requires_password_setup: true,
+      permissions: salesmanPermissions
     });
 
     await salesman.save();
@@ -76,6 +88,7 @@ router.post('/create', verifyToken, async (req, res) => {
         email: salesman.email,
         phone: salesman.phone,
         is_active: salesman.is_active,
+        permissions: salesman.permissions,
         created_at: salesman.created_at
       }
     });
@@ -92,7 +105,7 @@ router.put('/:id', verifyToken, async (req, res) => {
       return res.status(403).json({ error: 'Only wholesalers can update salesmen' });
     }
 
-    const { name, email, phone, password, is_active } = req.body;
+    const { name, email, phone, password, is_active, permissions } = req.body;
 
     const salesman = await Salesman.findOne({
       _id: req.params.id,
@@ -123,6 +136,14 @@ router.put('/:id', verifyToken, async (req, res) => {
     if (phone) salesman.phone = phone;
     if (typeof is_active === 'boolean') salesman.is_active = is_active;
     
+    // Update permissions if provided
+    if (permissions) {
+      salesman.permissions = {
+        ...salesman.permissions,
+        ...permissions
+      };
+    }
+    
     if (password) {
       salesman.password = await bcrypt.hash(password, 10);
     }
@@ -136,7 +157,8 @@ router.put('/:id', verifyToken, async (req, res) => {
         name: salesman.name,
         email: salesman.email,
         phone: salesman.phone,
-        is_active: salesman.is_active
+        is_active: salesman.is_active,
+        permissions: salesman.permissions
       }
     });
   } catch (error) {
@@ -331,7 +353,7 @@ router.post('/add-retailer', verifyToken, async (req, res) => {
   }
 });
 
-// Get retailers added by this salesman
+// Get retailers for this salesman (includes all retailers if can_view_all_retailers is true)
 router.get('/my-retailers', verifyToken, async (req, res) => {
   try {
     if (req.user.userType !== 'salesman') {
@@ -343,25 +365,67 @@ router.get('/my-retailers', verifyToken, async (req, res) => {
       return res.status(404).json({ error: 'Salesman not found' });
     }
 
-    const connections = await Connection.find({
-      wholesaler_id: salesman.wholesaler_id,
-      salesman_id: req.user.userId
-    }).populate('retailer_id', 'business_name owner_name phone city state');
+    let query = {
+      wholesaler_id: salesman.wholesaler_id
+    };
 
-    const retailers = connections.map(conn => ({
-      _id: conn.retailer_id._id,
-      business_name: conn.retailer_id.business_name,
-      owner_name: conn.retailer_id.owner_name,
-      phone: conn.retailer_id.phone,
-      city: conn.retailer_id.city,
-      state: conn.retailer_id.state,
-      status: conn.status,
-      connection_id: conn._id
-    }));
+    // If salesman can view all retailers, show all approved connections
+    // Otherwise, only show retailers added by this salesman
+    if (!salesman.permissions?.can_view_all_retailers) {
+      query.salesman_id = req.user.userId;
+    }
+
+    const connections = await Connection.find(query)
+      .populate('retailer_id', 'business_name owner_name phone city state');
+
+    const retailers = connections
+      .filter(conn => conn.retailer_id) // Filter out any null retailer refs
+      .map(conn => ({
+        _id: conn.retailer_id._id,
+        business_name: conn.retailer_id.business_name,
+        owner_name: conn.retailer_id.owner_name,
+        phone: conn.retailer_id.phone,
+        city: conn.retailer_id.city,
+        state: conn.retailer_id.state,
+        status: conn.status,
+        connection_id: conn._id,
+        added_by_me: conn.salesman_id?.toString() === req.user.userId,
+        added_by: conn.requested_by === 'wholesaler' ? 'Wholesaler' : 
+                  (conn.salesman_id?.toString() === req.user.userId ? 'You' : 'Other Salesman')
+      }));
 
     res.json(retailers);
   } catch (error) {
     console.error('Get my retailers error:', error);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// Get salesman permissions
+router.get('/my-permissions', verifyToken, async (req, res) => {
+  try {
+    if (req.user.userType !== 'salesman') {
+      return res.status(403).json({ error: 'Only salesmen can access this' });
+    }
+
+    const salesman = await Salesman.findById(req.user.userId);
+    if (!salesman) {
+      return res.status(404).json({ error: 'Salesman not found' });
+    }
+
+    res.json({
+      permissions: salesman.permissions || {
+        can_add_products: true,
+        can_delete_products: false,
+        can_add_brands: true,
+        can_add_retailers: true,
+        can_delete_retailers: false,
+        can_view_all_retailers: true,
+        can_place_orders: true
+      }
+    });
+  } catch (error) {
+    console.error('Get permissions error:', error);
     res.status(500).json({ error: 'Server error' });
   }
 });

@@ -35,6 +35,37 @@ const salesmanSchema = new mongoose.Schema({
     type: Boolean,
     default: true
   },
+  // Salesman permissions - what they can do
+  permissions: {
+    can_add_products: {
+      type: Boolean,
+      default: true
+    },
+    can_delete_products: {
+      type: Boolean,
+      default: false  // Default to false - only wholesaler can delete by default
+    },
+    can_add_brands: {
+      type: Boolean,
+      default: true
+    },
+    can_add_retailers: {
+      type: Boolean,
+      default: true
+    },
+    can_delete_retailers: {
+      type: Boolean,
+      default: false  // Default to false - only wholesaler can delete by default
+    },
+    can_view_all_retailers: {
+      type: Boolean,
+      default: true  // Can see retailers added by wholesaler
+    },
+    can_place_orders: {
+      type: Boolean,
+      default: true
+    }
+  },
   created_at: {
     type: Date,
     default: Date.now
