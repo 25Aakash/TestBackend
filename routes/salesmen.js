@@ -446,6 +446,7 @@ router.get('/my-permissions', verifyToken, async (req, res) => {
 
 const Product = require('../models/Product');
 const Order = require('../models/Order');
+const Brand = require('../models/Brand');
 
 // Get salesman's temporary cart (stored in memory/session - we'll use a simple approach)
 // Using a SalesmanCart model for persistent cart per salesman-retailer combo
@@ -899,6 +900,87 @@ router.post('/place-order/:retailer_id', verifyToken, async (req, res) => {
     });
   } catch (error) {
     console.error('Place order error:', error);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// Get products from salesman's wholesaler
+router.get('/my-wholesaler-products', verifyToken, async (req, res) => {
+  try {
+    if (req.user.userType !== 'salesman') {
+      return res.status(403).json({ error: 'Only salesmen can access this' });
+    }
+
+    // Get the salesman to find their wholesaler_id
+    const salesman = await Salesman.findById(req.user.userId);
+    if (!salesman) {
+      return res.status(404).json({ error: 'Salesman not found' });
+    }
+
+    const { category, search } = req.query;
+
+    let query = {
+      wholesaler_id: salesman.wholesaler_id,
+      is_active: true
+    };
+
+    if (category) {
+      query.category = category;
+    }
+
+    if (search) {
+      query.$or = [
+        { name: { $regex: search, $options: 'i' } },
+        { description: { $regex: search, $options: 'i' } },
+        { brand: { $regex: search, $options: 'i' } }
+      ];
+    }
+
+    let products = await Product.find(query)
+      .populate('wholesaler_id', 'business_name city')
+      .sort({ createdAt: -1 });
+
+    // Attach brand details
+    const brandLookups = products
+      .filter(p => p.brand && p.wholesaler_id)
+      .map(p => ({
+        wholesaler_id: p.wholesaler_id._id || p.wholesaler_id,
+        brand: p.brand
+      }));
+
+    if (brandLookups.length > 0) {
+      const brands = await Brand.find({
+        $or: brandLookups.map(bl => ({
+          wholesaler_id: bl.wholesaler_id,
+          name: bl.brand
+        }))
+      });
+
+      const brandMap = {};
+      brands.forEach(b => {
+        const key = `${b.wholesaler_id}_${b.name}`;
+        brandMap[key] = {
+          _id: b._id,
+          name: b.name,
+          image: b.image || '',
+          description: b.description || ''
+        };
+      });
+
+      products = products.map(p => {
+        const productObj = p.toObject ? p.toObject() : p;
+        const wholesalerId = productObj.wholesaler_id?._id || productObj.wholesaler_id;
+        const key = `${wholesalerId}_${productObj.brand}`;
+        if (brandMap[key]) {
+          productObj.brandDetails = brandMap[key];
+        }
+        return productObj;
+      });
+    }
+
+    res.json(products);
+  } catch (error) {
+    console.error('Get wholesaler products error:', error);
     res.status(500).json({ error: 'Server error' });
   }
 });
