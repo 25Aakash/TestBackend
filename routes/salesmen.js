@@ -365,18 +365,29 @@ router.get('/my-retailers', verifyToken, async (req, res) => {
       return res.status(404).json({ error: 'Salesman not found' });
     }
 
-    let query = {
-      wholesaler_id: salesman.wholesaler_id
-    };
+    console.log('Salesman:', salesman.name, 'Permissions:', salesman.permissions);
 
-    // If salesman can view all retailers, show all approved connections
-    // Otherwise, only show retailers added by this salesman
-    if (!salesman.permissions?.can_view_all_retailers) {
-      query.salesman_id = req.user.userId;
+    let connections;
+
+    if (salesman.permissions?.can_view_all_retailers) {
+      // Show ALL retailers connected to this wholesaler (approved only from others)
+      // Plus show own pending retailers
+      connections = await Connection.find({
+        wholesaler_id: salesman.wholesaler_id,
+        $or: [
+          { status: 'approved' },  // All approved connections
+          { salesman_id: req.user.userId }  // Plus all own connections (any status)
+        ]
+      }).populate('retailer_id', 'business_name owner_name phone city state');
+    } else {
+      // Only show retailers added by this salesman (any status)
+      connections = await Connection.find({
+        wholesaler_id: salesman.wholesaler_id,
+        salesman_id: req.user.userId
+      }).populate('retailer_id', 'business_name owner_name phone city state');
     }
 
-    const connections = await Connection.find(query)
-      .populate('retailer_id', 'business_name owner_name phone city state');
+    console.log('Found connections:', connections.length);
 
     const retailers = connections
       .filter(conn => conn.retailer_id) // Filter out any null retailer refs
@@ -391,6 +402,7 @@ router.get('/my-retailers', verifyToken, async (req, res) => {
         connection_id: conn._id,
         added_by_me: conn.salesman_id?.toString() === req.user.userId,
         added_by: conn.requested_by === 'wholesaler' ? 'Wholesaler' : 
+                  conn.requested_by === 'retailer' ? 'Retailer' :
                   (conn.salesman_id?.toString() === req.user.userId ? 'You' : 'Other Salesman')
       }));
 
