@@ -41,6 +41,11 @@ const orderSchema = new mongoose.Schema({
     ref: 'Wholesaler',
     required: true
   },
+  placed_by_salesman: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Salesman',
+    default: null
+  },
   items: [orderItemSchema],
   subtotal: {
     type: Number,
