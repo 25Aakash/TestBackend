@@ -4,13 +4,13 @@ const Retailer = require('../models/Retailer');
 const Wholesaler = require('../models/Wholesaler');
 const Salesman = require('../models/Salesman');
 const { sendPushNotification } = require('../services/notificationService');
-const auth = require('../middleware/auth');
+const { verifyToken } = require('../middleware/auth');
 
 /**
  * Register device push token
  * POST /notifications/register
  */
-router.post('/register', auth, async (req, res) => {
+router.post('/register', verifyToken, async (req, res) => {
   try {
     const { pushToken } = req.body;
     const { userId, userType } = req.user;
@@ -63,7 +63,7 @@ router.post('/register', auth, async (req, res) => {
  * Send test notification
  * POST /notifications/test
  */
-router.post('/test', auth, async (req, res) => {
+router.post('/test', verifyToken, async (req, res) => {
   try {
     const { userId, userType } = req.user;
 
@@ -107,7 +107,7 @@ router.post('/test', auth, async (req, res) => {
  * Unregister push token (logout)
  * POST /notifications/unregister
  */
-router.post('/unregister', auth, async (req, res) => {
+router.post('/unregister', verifyToken, async (req, res) => {
   try {
     const { userId, userType } = req.user;
 
