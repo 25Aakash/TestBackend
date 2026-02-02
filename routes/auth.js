@@ -5,6 +5,8 @@ const Wholesaler = require('../models/Wholesaler');
 const Retailer = require('../models/Retailer');
 const Salesman = require('../models/Salesman');
 const { verifyGST } = require('../services/gstService');
+const { authLimiter } = require('../middleware/rateLimiter');
+const logger = require('../utils/logger');
 
 const router = express.Router();
 
@@ -18,7 +20,7 @@ const generateToken = (userId, userType) => {
 };
 
 // Wholesaler Signup
-router.post('/wholesaler/signup', async (req, res) => {
+router.post('/wholesaler/signup', authLimiter, async (req, res) => {
   try {
     const {
       business_name,
@@ -92,13 +94,13 @@ router.post('/wholesaler/signup', async (req, res) => {
       }
     });
   } catch (error) {
-    console.error('Wholesaler signup error:', error);
+    logger.error('Wholesaler signup error', { error: error.message, stack: error.stack });
     res.status(500).json({ error: 'Server error during registration' });
   }
 });
 
 // Retailer Signup
-router.post('/retailer/signup', async (req, res) => {
+router.post('/retailer/signup', authLimiter, async (req, res) => {
   try {
     const {
       business_name,
@@ -167,13 +169,13 @@ router.post('/retailer/signup', async (req, res) => {
       }
     });
   } catch (error) {
-    console.error('Retailer signup error:', error);
+    logger.error('Retailer signup error', { error: error.message, stack: error.stack });
     res.status(500).json({ error: 'Server error during registration' });
   }
 });
 
 // Login (handles both wholesaler and retailer)
-router.post('/login', async (req, res) => {
+router.post('/login', authLimiter, async (req, res) => {
   try {
     const { email, password, userType } = req.body;
 
@@ -260,7 +262,7 @@ router.post('/login', async (req, res) => {
       user: userResponse
     });
   } catch (error) {
-    console.error('Login error:', error);
+    logger.error('Login error', { error: error.message, email: req.body.email });
     res.status(500).json({ error: 'Server error during login' });
   }
 });
@@ -342,7 +344,7 @@ router.post('/set-password', async (req, res) => {
       user: userResponse
     });
   } catch (error) {
-    console.error('Set password error:', error);
+    logger.error('Set password error', { error: error.message, userId: decoded?.userId });
     res.status(500).json({ error: 'Server error while setting password' });
   }
 });

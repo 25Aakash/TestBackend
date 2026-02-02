@@ -53,7 +53,7 @@ const attachBrandDetails = async (products) => {
 // Get all products (filtered by connections for retailers)
 router.get('/', verifyToken, async (req, res) => {
   try {
-    const { category, wholesaler_id, search } = req.query;
+    const { category, wholesaler_id, search, page = 1, limit = 20 } = req.query;
     
     let query = { is_active: true };
     
@@ -68,7 +68,12 @@ router.get('/', verifyToken, async (req, res) => {
       
       if (connectedWholesalerIds.length === 0) {
         // No connections, return empty array
-        return res.json([]);
+        return res.json({
+          products: [],
+          totalPages: 0,
+          currentPage: parseInt(page),
+          totalProducts: 0
+        });
       }
       
       query.wholesaler_id = { $in: connectedWholesalerIds };
@@ -86,14 +91,30 @@ router.get('/', verifyToken, async (req, res) => {
       query.$text = { $search: search };
     }
     
+    // Calculate pagination
+    const pageNum = parseInt(page);
+    const limitNum = parseInt(limit);
+    const skip = (pageNum - 1) * limitNum;
+    
+    // Get total count
+    const totalProducts = await Product.countDocuments(query);
+    const totalPages = Math.ceil(totalProducts / limitNum);
+    
     const products = await Product.find(query)
       .populate('wholesaler_id', 'business_name city state')
-      .sort({ createdAt: -1 });
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(limitNum);
     
     // Attach brand details with images
     const productsWithBrands = await attachBrandDetails(products);
     
-    res.json(productsWithBrands);
+    res.json({
+      products: productsWithBrands,
+      totalPages,
+      currentPage: pageNum,
+      totalProducts
+    });
   } catch (error) {
     console.error('Get products error:', error);
     res.status(500).json({ error: 'Server error' });
@@ -123,10 +144,28 @@ router.get('/:id', async (req, res) => {
 // Get wholesaler's products (requires wholesaler or salesman auth)
 router.get('/my/products', verifyToken, isWholesalerOrSalesman, async (req, res) => {
   try {
-    const products = await Product.find({ wholesaler_id: req.effectiveWholesalerId })
-      .sort({ createdAt: -1 });
+    const { page = 1, limit = 20 } = req.query;
     
-    res.json(products);
+    // Calculate pagination
+    const pageNum = parseInt(page);
+    const limitNum = parseInt(limit);
+    const skip = (pageNum - 1) * limitNum;
+    
+    // Get total count
+    const totalProducts = await Product.countDocuments({ wholesaler_id: req.effectiveWholesalerId });
+    const totalPages = Math.ceil(totalProducts / limitNum);
+    
+    const products = await Product.find({ wholesaler_id: req.effectiveWholesalerId })
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(limitNum);
+    
+    res.json({
+      products,
+      totalPages,
+      currentPage: pageNum,
+      totalProducts
+    });
   } catch (error) {
     console.error('Get my products error:', error);
     res.status(500).json({ error: 'Server error' });

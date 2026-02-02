@@ -62,6 +62,10 @@ const wholesalerSchema = new mongoose.Schema({
     type: String,
     enum: ['immediate', 'net_30', 'net_60', 'net_90'],
     default: 'immediate'
+  },
+  pushToken: {
+    type: String,
+    default: null
   }
 }, { timestamps: true });
 

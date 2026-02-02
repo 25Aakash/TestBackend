@@ -66,6 +66,10 @@ const salesmanSchema = new mongoose.Schema({
       default: true
     }
   },
+  pushToken: {
+    type: String,
+    default: null
+  },
   created_at: {
     type: Date,
     default: Date.now

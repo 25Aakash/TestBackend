@@ -75,6 +75,10 @@ const retailerSchema = new mongoose.Schema({
   is_verified: {
     type: Boolean,
     default: false
+  },
+  pushToken: {
+    type: String,
+    default: null
   }
 }, { timestamps: true });
 

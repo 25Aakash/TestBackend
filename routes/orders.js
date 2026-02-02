@@ -3,6 +3,9 @@ const Order = require('../models/Order');
 const Cart = require('../models/Cart');
 const Product = require('../models/Product');
 const { verifyToken, isRetailer, isWholesaler } = require('../middleware/auth');
+const Retailer = require('../models/Retailer');
+const Wholesaler = require('../models/Wholesaler');
+const { sendOrderNotification, sendNewOrderNotification } = require('../services/notificationService');
 
 const router = express.Router();
 
@@ -28,12 +31,30 @@ const generateOrderNumber = async () => {
 // Get retailer's orders
 router.get('/my-orders', verifyToken, isRetailer, async (req, res) => {
   try {
+    const { page = 1, limit = 20 } = req.query;
+    
+    // Calculate pagination
+    const pageNum = parseInt(page);
+    const limitNum = parseInt(limit);
+    const skip = (pageNum - 1) * limitNum;
+    
+    // Get total count
+    const totalOrders = await Order.countDocuments({ retailer_id: req.user.userId });
+    const totalPages = Math.ceil(totalOrders / limitNum);
+    
     const orders = await Order.find({ retailer_id: req.user.userId })
       .populate('wholesaler_id', 'business_name city phone')
-      .sort({ createdAt: -1 });
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(limitNum);
 
     console.log('Retailer orders found:', orders.length);
-    res.json(orders);
+    res.json({
+      orders,
+      totalPages,
+      currentPage: pageNum,
+      totalOrders
+    });
   } catch (error) {
     console.error('Get orders error:', error);
     res.status(500).json({ error: 'Server error' });
@@ -43,11 +64,29 @@ router.get('/my-orders', verifyToken, isRetailer, async (req, res) => {
 // Get wholesaler's orders
 router.get('/received-orders', verifyToken, isWholesaler, async (req, res) => {
   try {
+    const { page = 1, limit = 20 } = req.query;
+    
+    // Calculate pagination
+    const pageNum = parseInt(page);
+    const limitNum = parseInt(limit);
+    const skip = (pageNum - 1) * limitNum;
+    
+    // Get total count
+    const totalOrders = await Order.countDocuments({ wholesaler_id: req.user.userId });
+    const totalPages = Math.ceil(totalOrders / limitNum);
+    
     const orders = await Order.find({ wholesaler_id: req.user.userId })
       .populate('retailer_id', 'business_name city phone')
-      .sort({ createdAt: -1 });
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(limitNum);
 
-    res.json(orders);
+    res.json({
+      orders,
+      totalPages,
+      currentPage: pageNum,
+      totalOrders
+    });
   } catch (error) {
     console.error('Get received orders error:', error);
     res.status(500).json({ error: 'Server error' });
@@ -162,6 +201,20 @@ router.post('/place', verifyToken, isRetailer, async (req, res) => {
     cart.items = [];
     await cart.save();
 
+    // Send notifications to wholesalers
+    for (const order of createdOrders) {
+      const wholesaler = await Wholesaler.findById(order.wholesaler_id);
+      if (wholesaler) {
+        const retailer = await Retailer.findById(req.user.userId);
+        await sendNewOrderNotification(
+          wholesaler,
+          order._id.toString(),
+          order.order_number,
+          retailer.business_name
+        );
+      }
+    }
+
     res.status(201).json({
       message: 'Orders placed successfully',
       orders: createdOrders
@@ -193,6 +246,17 @@ router.put('/:id/status', verifyToken, isWholesaler, async (req, res) => {
 
     order.status = status;
     await order.save();
+
+    // Send notification to retailer
+    const retailer = await Retailer.findById(order.retailer_id);
+    if (retailer) {
+      await sendOrderNotification(
+        retailer,
+        order._id.toString(),
+        status,
+        order.order_number
+      );
+    }
 
     res.json({
       message: 'Order status updated',
