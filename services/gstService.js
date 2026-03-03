@@ -1,4 +1,5 @@
 const axios = require('axios');
+const logger = require('../utils/logger');
 
 // GST Verification Service
 const verifyGST = async (gstNumber) => {
@@ -17,10 +18,11 @@ const verifyGST = async (gstNumber) => {
 
     return { valid: false };
   } catch (error) {
-    console.error('GST verification error:', error.message);
+    logger.error('GST verification error', { error: error.message });
     // Return as valid if API fails (don't block registration)
     return { valid: true, error: 'Verification service unavailable' };
   }
 };
 
 module.exports = { verifyGST };
+

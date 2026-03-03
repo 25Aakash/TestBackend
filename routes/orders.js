@@ -6,39 +6,21 @@ const { verifyToken, isRetailer, isWholesaler } = require('../middleware/auth');
 const Retailer = require('../models/Retailer');
 const Wholesaler = require('../models/Wholesaler');
 const { sendOrderNotification, sendNewOrderNotification } = require('../services/notificationService');
+const { generateOrderNumber } = require('../utils/orderNumber');
+const { validate, orderSchema } = require('../validators/schemas');
+const logger = require('../utils/logger');
 
 const router = express.Router();
-
-// Generate unique order number
-const generateOrderNumber = async () => {
-  const date = new Date();
-  const year = date.getFullYear().toString().slice(-2);
-  const month = (date.getMonth() + 1).toString().padStart(2, '0');
-  const day = date.getDate().toString().padStart(2, '0');
-  
-  // Get count of orders today
-  const startOfDay = new Date(date.setHours(0, 0, 0, 0));
-  const endOfDay = new Date(date.setHours(23, 59, 59, 999));
-  
-  const todayOrdersCount = await Order.countDocuments({
-    createdAt: { $gte: startOfDay, $lte: endOfDay }
-  });
-  
-  const sequence = (todayOrdersCount + 1).toString().padStart(4, '0');
-  return `ORD${year}${month}${day}${sequence}`;
-};
 
 // Get retailer's orders
 router.get('/my-orders', verifyToken, isRetailer, async (req, res) => {
   try {
     const { page = 1, limit = 20 } = req.query;
     
-    // Calculate pagination
     const pageNum = parseInt(page);
     const limitNum = parseInt(limit);
     const skip = (pageNum - 1) * limitNum;
     
-    // Get total count
     const totalOrders = await Order.countDocuments({ retailer_id: req.user.userId });
     const totalPages = Math.ceil(totalOrders / limitNum);
     
@@ -48,7 +30,7 @@ router.get('/my-orders', verifyToken, isRetailer, async (req, res) => {
       .skip(skip)
       .limit(limitNum);
 
-    console.log('Retailer orders found:', orders.length);
+    logger.debug('Retailer orders fetched', { count: orders.length, userId: req.user.userId });
     res.json({
       orders,
       totalPages,
@@ -56,7 +38,7 @@ router.get('/my-orders', verifyToken, isRetailer, async (req, res) => {
       totalOrders
     });
   } catch (error) {
-    console.error('Get orders error:', error);
+    logger.error('Get orders error', { error: error.message, stack: error.stack });
     res.status(500).json({ error: 'Server error' });
   }
 });
@@ -66,12 +48,10 @@ router.get('/received-orders', verifyToken, isWholesaler, async (req, res) => {
   try {
     const { page = 1, limit = 20 } = req.query;
     
-    // Calculate pagination
     const pageNum = parseInt(page);
     const limitNum = parseInt(limit);
     const skip = (pageNum - 1) * limitNum;
     
-    // Get total count
     const totalOrders = await Order.countDocuments({ wholesaler_id: req.user.userId });
     const totalPages = Math.ceil(totalOrders / limitNum);
     
@@ -88,7 +68,7 @@ router.get('/received-orders', verifyToken, isWholesaler, async (req, res) => {
       totalOrders
     });
   } catch (error) {
-    console.error('Get received orders error:', error);
+    logger.error('Get received orders error', { error: error.message, stack: error.stack });
     res.status(500).json({ error: 'Server error' });
   }
 });
@@ -115,15 +95,15 @@ router.get('/:id', verifyToken, async (req, res) => {
 
     res.json(order);
   } catch (error) {
-    console.error('Get order error:', error);
+    logger.error('Get order error', { error: error.message, stack: error.stack });
     res.status(500).json({ error: 'Server error' });
   }
 });
 
 // Place order from cart
-router.post('/place', verifyToken, isRetailer, async (req, res) => {
+router.post('/place', verifyToken, isRetailer, validate(orderSchema), async (req, res) => {
   try {
-    const { delivery_address, notes } = req.body;
+    const { delivery_address, notes } = req.validatedData || req.body;
 
     // Get cart
     const cart = await Cart.findOne({ retailer_id: req.user.userId })
@@ -220,7 +200,7 @@ router.post('/place', verifyToken, isRetailer, async (req, res) => {
       orders: createdOrders
     });
   } catch (error) {
-    console.error('Place order error:', error);
+    logger.error('Place order error', { error: error.message, stack: error.stack });
     res.status(500).json({ error: 'Server error' });
   }
 });
@@ -263,7 +243,7 @@ router.put('/:id/status', verifyToken, isWholesaler, async (req, res) => {
       order
     });
   } catch (error) {
-    console.error('Update order status error:', error);
+    logger.error('Update order status error', { error: error.message, stack: error.stack });
     res.status(500).json({ error: 'Server error' });
   }
 });
@@ -300,7 +280,7 @@ router.put('/:id/cancel', verifyToken, isRetailer, async (req, res) => {
       order
     });
   } catch (error) {
-    console.error('Cancel order error:', error);
+    logger.error('Cancel order error', { error: error.message, stack: error.stack });
     res.status(500).json({ error: 'Server error' });
   }
 });

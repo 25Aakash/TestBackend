@@ -78,6 +78,5 @@ const salesmanSchema = new mongoose.Schema({
 
 // Index for faster queries
 salesmanSchema.index({ wholesaler_id: 1 });
-salesmanSchema.index({ email: 1 });
 
 module.exports = mongoose.model('Salesman', salesmanSchema);

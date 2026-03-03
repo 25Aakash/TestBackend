@@ -4,6 +4,7 @@ const Wholesaler = require('../models/Wholesaler');
 const Retailer = require('../models/Retailer');
 const Connection = require('../models/Connection');
 const { verifyToken, isWholesaler } = require('../middleware/auth');
+const logger = require('../utils/logger');
 
 const router = express.Router();
 
@@ -39,7 +40,7 @@ router.get('/', async (req, res) => {
     
     res.json(wholesalers);
   } catch (error) {
-    console.error('Get wholesalers error:', error);
+    logger.error('Get wholesalers error', { error: error.message, stack: error.stack });
     res.status(500).json({ error: 'Server error' });
   }
 });
@@ -56,7 +57,7 @@ router.get('/:id', async (req, res) => {
     
     res.json(wholesaler);
   } catch (error) {
-    console.error('Get wholesaler error:', error);
+    logger.error('Get wholesaler error', { error: error.message, stack: error.stack });
     res.status(500).json({ error: 'Server error' });
   }
 });
@@ -154,7 +155,7 @@ router.post('/add-retailer', verifyToken, isWholesaler, async (req, res) => {
       }
     });
   } catch (error) {
-    console.error('Add retailer error:', error);
+    logger.error('Add retailer error', { error: error.message, stack: error.stack });
     res.status(500).json({ error: 'Server error' });
   }
 });

@@ -6,6 +6,7 @@ const Retailer = require('../models/Retailer');
 const Salesman = require('../models/Salesman');
 const { verifyGST } = require('../services/gstService');
 const { authLimiter } = require('../middleware/rateLimiter');
+const { validate, registerSchema, loginSchema } = require('../validators/schemas');
 const logger = require('../utils/logger');
 
 const router = express.Router();
@@ -56,9 +57,6 @@ router.post('/wholesaler/signup', authLimiter, async (req, res) => {
     if (existingWholesaler) {
       return res.status(400).json({ error: 'Email, phone, or GST number already registered' });
     }
-
-    // Verify GST (optional - can be done async)
-    // const gstValid = await verifyGST(normalizedGstNumber);
 
     // Hash password
     const hashedPassword = await bcrypt.hash(password, 10);
@@ -175,17 +173,13 @@ router.post('/retailer/signup', authLimiter, async (req, res) => {
 });
 
 // Login (handles both wholesaler and retailer)
-router.post('/login', authLimiter, async (req, res) => {
+router.post('/login', authLimiter, validate(loginSchema), async (req, res) => {
   try {
-    const { email, password, userType } = req.body;
-
-    if (!email || !password || !userType) {
-      return res.status(400).json({ error: 'Email/Phone, password, and user type are required' });
-    }
+    const { email, password, userType } = req.validatedData || req.body;
 
     let user;
     // Check if input is email or phone number
-    const isPhone = /^\d{10}$/.test(email); // Check if it's a 10-digit phone number
+    const isPhone = /^\d{10}$/.test(email);
     
     if (userType === 'wholesaler') {
       if (isPhone) {
@@ -221,7 +215,6 @@ router.post('/login', authLimiter, async (req, res) => {
 
     // Check if user needs to set password (for users added by wholesaler/salesman)
     if (user.requires_password_setup) {
-      // Generate a temporary token for password setup
       const tempToken = jwt.sign(
         { userId: user._id, userType, purpose: 'password_setup' },
         process.env.JWT_SECRET,
@@ -344,9 +337,109 @@ router.post('/set-password', async (req, res) => {
       user: userResponse
     });
   } catch (error) {
-    logger.error('Set password error', { error: error.message, userId: decoded?.userId });
+    logger.error('Set password error', { error: error.message });
     res.status(500).json({ error: 'Server error while setting password' });
   }
 });
 
+// Unified Login — auto-detect user type from credentials
+router.post('/unified-login', authLimiter, async (req, res) => {
+  try {
+    const { email, password } = req.body;
+
+    if (!email || !password) {
+      return res.status(400).json({ error: 'Email/phone and password are required' });
+    }
+
+    const isPhone = /^\d{10}$/.test(email.trim());
+    const searchField = isPhone ? 'phone' : 'email';
+    const searchValue = isPhone ? email.trim() : email.trim().toLowerCase();
+
+    // Search across all user collections in priority order
+    let user = null;
+    let userType = null;
+
+    // 1. Try Wholesaler
+    const wholesaler = await Wholesaler.findOne({ [searchField]: searchValue });
+    if (wholesaler) {
+      user = wholesaler;
+      userType = 'wholesaler';
+    }
+
+    // 2. Try Retailer
+    if (!user) {
+      const retailer = await Retailer.findOne({ [searchField]: searchValue });
+      if (retailer) {
+        user = retailer;
+        userType = 'retailer';
+      }
+    }
+
+    // 3. Try Salesman
+    if (!user) {
+      const salesman = await Salesman.findOne({ [searchField]: searchValue, is_active: true });
+      if (salesman) {
+        user = salesman;
+        userType = 'salesman';
+      }
+    }
+
+    if (!user) {
+      return res.status(401).json({ error: 'Invalid credentials' });
+    }
+
+    // Verify password
+    const isValidPassword = await bcrypt.compare(password, user.password);
+    if (!isValidPassword) {
+      return res.status(401).json({ error: 'Invalid credentials' });
+    }
+
+    // Check if user needs to set password
+    if (user.requires_password_setup) {
+      const tempToken = jwt.sign(
+        { userId: user._id, userType, purpose: 'password_setup' },
+        process.env.JWT_SECRET,
+        { expiresIn: '1h' }
+      );
+
+      return res.json({
+        requiresPasswordSetup: true,
+        tempToken,
+        userType,
+        message: 'Please set your password to continue'
+      });
+    }
+
+    // Generate token
+    const token = generateToken(user._id, userType);
+
+    // Build response
+    let userResponse = {
+      _id: user._id,
+      email: user.email,
+      phone: user.phone,
+      userType
+    };
+
+    if (userType === 'salesman') {
+      userResponse.name = user.name;
+      userResponse.wholesaler_id = user.wholesaler_id;
+    } else {
+      userResponse.business_name = user.business_name;
+      userResponse.owner_name = user.owner_name;
+      userResponse.gst_number = user.gst_number;
+    }
+
+    res.json({
+      message: 'Login successful',
+      token,
+      user: userResponse
+    });
+  } catch (error) {
+    logger.error('Unified login error', { error: error.message });
+    res.status(500).json({ error: 'Server error during login' });
+  }
+});
+
 module.exports = router;
+

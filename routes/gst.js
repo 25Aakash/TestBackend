@@ -2,10 +2,9 @@ const express = require('express');
 const router = express.Router();
 const axios = require('axios');
 const { v4: uuidv4 } = require('uuid');
+const logger = require('../utils/logger');
 
 const GST_API_URL = 'https://gst-verification.p.rapidapi.com/v3/tasks/sync/verify_with_source/ind_gst_certificate';
-const RAPIDAPI_KEY = 'f5c6d3af1amsh2b837a1bf587158p18e808jsn5787df1330a4';
-const RAPIDAPI_HOST = 'gst-verification.p.rapidapi.com';
 
 // GST Verification API endpoint
 router.post('/verify', async (req, res) => {
@@ -28,7 +27,7 @@ router.post('/verify', async (req, res) => {
     const taskId = uuidv4();
     const groupId = uuidv4();
 
-    // Using RapidAPI GST verification
+    // Using RapidAPI GST verification — keys from environment
     const response = await axios.post(
       GST_API_URL,
       {
@@ -38,15 +37,15 @@ router.post('/verify', async (req, res) => {
       },
       {
         headers: {
-          'x-rapidapi-key': RAPIDAPI_KEY,
-          'x-rapidapi-host': RAPIDAPI_HOST,
+          'x-rapidapi-key': process.env.RAPIDAPI_KEY,
+          'x-rapidapi-host': process.env.RAPIDAPI_HOST,
           'Content-Type': 'application/json',
         },
         timeout: 15000
       }
     );
 
-    console.log('GST API Response:', JSON.stringify(response.data, null, 2));
+    logger.info('GST API Response received', { gstNumber });
 
     if (response.data && response.data.result) {
       const result = response.data.result;
@@ -98,7 +97,7 @@ router.post('/verify', async (req, res) => {
       });
     }
   } catch (error) {
-    console.error('GST verification error:', error.message);
+    logger.error('GST verification error', { error: error.message });
     
     // Return graceful response if API fails
     return res.json({

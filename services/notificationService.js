@@ -1,4 +1,5 @@
 const axios = require('axios');
+const logger = require('../utils/logger');
 
 const EXPO_PUSH_URL = 'https://exp.host/--/api/v2/push/send';
 
@@ -11,7 +12,7 @@ const EXPO_PUSH_URL = 'https://exp.host/--/api/v2/push/send';
  */
 const sendPushNotification = async (pushToken, title, body, data = {}) => {
   if (!pushToken || !pushToken.startsWith('ExponentPushToken')) {
-    console.log('Invalid push token:', pushToken);
+    logger.warn('Invalid push token', { pushToken });
     return null;
   }
 
@@ -33,10 +34,10 @@ const sendPushNotification = async (pushToken, title, body, data = {}) => {
       }
     });
 
-    console.log('Push notification sent:', response.data);
+    logger.info('Push notification sent', { data: response.data });
     return response.data;
   } catch (error) {
-    console.error('Error sending push notification:', error.response?.data || error.message);
+    logger.error('Error sending push notification', { error: error.response?.data || error.message });
     return null;
   }
 };

@@ -1,54 +1,13 @@
 const express = require('express');
 const Product = require('../models/Product');
 const Connection = require('../models/Connection');
-const Brand = require('../models/Brand');
-const { verifyToken, isWholesaler, isWholesalerOrSalesman, isRetailer } = require('../middleware/auth');
+const { verifyToken, isWholesalerOrSalesman } = require('../middleware/auth');
+const { attachBrandDetails } = require('../utils/brandHelper');
+const { calculateUnitPrice, calculatePriceBreakdown } = require('../utils/pricing');
+const { validate, productSchema } = require('../validators/schemas');
+const logger = require('../utils/logger');
 
 const router = express.Router();
-
-// Helper function to attach brand details to products
-const attachBrandDetails = async (products) => {
-  // Get unique wholesaler IDs and brand names
-  const brandLookups = products
-    .filter(p => p.brand && p.wholesaler_id)
-    .map(p => ({
-      wholesaler_id: p.wholesaler_id._id || p.wholesaler_id,
-      brand: p.brand
-    }));
-
-  if (brandLookups.length === 0) return products;
-
-  // Fetch all relevant brands in one query
-  const brands = await Brand.find({
-    $or: brandLookups.map(bl => ({
-      wholesaler_id: bl.wholesaler_id,
-      name: bl.brand
-    }))
-  });
-
-  // Create a lookup map
-  const brandMap = {};
-  brands.forEach(b => {
-    const key = `${b.wholesaler_id}_${b.name}`;
-    brandMap[key] = {
-      _id: b._id,
-      name: b.name,
-      image: b.image || '',
-      description: b.description || ''
-    };
-  });
-
-  // Attach brand details to products
-  return products.map(p => {
-    const productObj = p.toObject ? p.toObject() : p;
-    const wholesalerId = productObj.wholesaler_id?._id || productObj.wholesaler_id;
-    const key = `${wholesalerId}_${productObj.brand}`;
-    if (brandMap[key]) {
-      productObj.brandDetails = brandMap[key];
-    }
-    return productObj;
-  });
-};
 
 // Get all products (filtered by connections for retailers)
 router.get('/', verifyToken, async (req, res) => {
@@ -67,7 +26,6 @@ router.get('/', verifyToken, async (req, res) => {
       const connectedWholesalerIds = connections.map(c => c.wholesaler_id);
       
       if (connectedWholesalerIds.length === 0) {
-        // No connections, return empty array
         return res.json({
           products: [],
           totalPages: 0,
@@ -116,7 +74,7 @@ router.get('/', verifyToken, async (req, res) => {
       totalProducts
     });
   } catch (error) {
-    console.error('Get products error:', error);
+    logger.error('Get products error', { error: error.message, stack: error.stack });
     res.status(500).json({ error: 'Server error' });
   }
 });
@@ -136,7 +94,7 @@ router.get('/:id', async (req, res) => {
     
     res.json(productWithBrand[0]);
   } catch (error) {
-    console.error('Get product error:', error);
+    logger.error('Get product error', { error: error.message, stack: error.stack });
     res.status(500).json({ error: 'Server error' });
   }
 });
@@ -167,13 +125,13 @@ router.get('/my/products', verifyToken, isWholesalerOrSalesman, async (req, res)
       totalProducts
     });
   } catch (error) {
-    console.error('Get my products error:', error);
+    logger.error('Get my products error', { error: error.message, stack: error.stack });
     res.status(500).json({ error: 'Server error' });
   }
 });
 
 // Create product (wholesaler or salesman)
-router.post('/', verifyToken, isWholesalerOrSalesman, async (req, res) => {
+router.post('/', verifyToken, isWholesalerOrSalesman, validate(productSchema), async (req, res) => {
   try {
     const {
       name,
@@ -192,7 +150,7 @@ router.post('/', verifyToken, isWholesalerOrSalesman, async (req, res) => {
       hsn_code,
       image_url,
       images
-    } = req.body;
+    } = req.validatedData || req.body;
 
     const product = new Product({
       wholesaler_id: req.effectiveWholesalerId,
@@ -221,7 +179,7 @@ router.post('/', verifyToken, isWholesalerOrSalesman, async (req, res) => {
       product
     });
   } catch (error) {
-    console.error('Create product error:', error);
+    logger.error('Create product error', { error: error.message, stack: error.stack });
     res.status(500).json({ error: 'Server error' });
   }
 });
@@ -258,7 +216,7 @@ router.put('/:id', verifyToken, isWholesalerOrSalesman, async (req, res) => {
       product
     });
   } catch (error) {
-    console.error('Update product error:', error);
+    logger.error('Update product error', { error: error.message, stack: error.stack });
     res.status(500).json({ error: 'Server error' });
   }
 });
@@ -271,7 +229,6 @@ router.delete('/:id', verifyToken, async (req, res) => {
     if (req.user.userType === 'wholesaler') {
       wholesalerId = req.user.userId;
     } else if (req.user.userType === 'salesman') {
-      // Check if salesman has delete permission
       const Salesman = require('../models/Salesman');
       const salesman = await Salesman.findById(req.user.userId);
       
@@ -299,7 +256,7 @@ router.delete('/:id', verifyToken, async (req, res) => {
 
     res.json({ message: 'Product deleted successfully' });
   } catch (error) {
-    console.error('Delete product error:', error);
+    logger.error('Delete product error', { error: error.message, stack: error.stack });
     res.status(500).json({ error: 'Server error' });
   }
 });
@@ -320,20 +277,7 @@ router.post('/:id/calculate-price', async (req, res) => {
       });
     }
 
-    // Find applicable pricing tier
-    let unitPrice = product.base_price;
-    for (const tier of product.pricing_tiers) {
-      if (quantity >= tier.min_quantity) {
-        if (tier.max_quantity === null || quantity <= tier.max_quantity) {
-          unitPrice = tier.price_per_unit;
-          break;
-        }
-      }
-    }
-
-    const subtotal = unitPrice * quantity;
-    const gstAmount = (subtotal * product.gst_percentage) / 100;
-    const total = subtotal + gstAmount;
+    const { unitPrice, subtotal, gstAmount, total } = calculatePriceBreakdown(product, quantity);
 
     res.json({
       unit_price: unitPrice,
@@ -344,7 +288,7 @@ router.post('/:id/calculate-price', async (req, res) => {
       total
     });
   } catch (error) {
-    console.error('Calculate price error:', error);
+    logger.error('Calculate price error', { error: error.message, stack: error.stack });
     res.status(500).json({ error: 'Server error' });
   }
 });

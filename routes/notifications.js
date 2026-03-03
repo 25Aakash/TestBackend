@@ -5,6 +5,7 @@ const Wholesaler = require('../models/Wholesaler');
 const Salesman = require('../models/Salesman');
 const { sendPushNotification } = require('../services/notificationService');
 const { verifyToken } = require('../middleware/auth');
+const logger = require('../utils/logger');
 
 /**
  * Register device push token
@@ -54,7 +55,7 @@ router.post('/register', verifyToken, async (req, res) => {
       pushToken: user.pushToken
     });
   } catch (error) {
-    console.error('Register push token error:', error);
+    logger.error('Register push token error', { error: error.message, stack: error.stack });
     res.status(500).json({ error: 'Failed to register push token' });
   }
 });
@@ -98,7 +99,7 @@ router.post('/test', verifyToken, async (req, res) => {
       res.status(500).json({ error: 'Failed to send test notification' });
     }
   } catch (error) {
-    console.error('Test notification error:', error);
+    logger.error('Test notification error', { error: error.message, stack: error.stack });
     res.status(500).json({ error: 'Failed to send test notification' });
   }
 });
@@ -111,30 +112,17 @@ router.post('/unregister', verifyToken, async (req, res) => {
   try {
     const { userId, userType } = req.user;
 
-    let user;
     if (userType === 'retailer') {
-      user = await Retailer.findByIdAndUpdate(
-        userId,
-        { pushToken: null },
-        { new: true }
-      );
+      await Retailer.findByIdAndUpdate(userId, { pushToken: null });
     } else if (userType === 'wholesaler') {
-      user = await Wholesaler.findByIdAndUpdate(
-        userId,
-        { pushToken: null },
-        { new: true }
-      );
+      await Wholesaler.findByIdAndUpdate(userId, { pushToken: null });
     } else if (userType === 'salesman') {
-      user = await Salesman.findByIdAndUpdate(
-        userId,
-        { pushToken: null },
-        { new: true }
-      );
+      await Salesman.findByIdAndUpdate(userId, { pushToken: null });
     }
 
     res.json({ message: 'Push token unregistered successfully' });
   } catch (error) {
-    console.error('Unregister push token error:', error);
+    logger.error('Unregister push token error', { error: error.message, stack: error.stack });
     res.status(500).json({ error: 'Failed to unregister push token' });
   }
 });

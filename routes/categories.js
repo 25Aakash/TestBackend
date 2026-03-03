@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const Category = require('../models/Category');
 const { verifyToken, isWholesaler } = require('../middleware/auth');
+const logger = require('../utils/logger');
 
 // Get all categories (default + custom)
 router.get('/', verifyToken, async (req, res) => {
@@ -9,7 +10,7 @@ router.get('/', verifyToken, async (req, res) => {
     const categories = await Category.find().sort({ is_default: -1, name: 1 });
     res.json(categories);
   } catch (error) {
-    console.error('Get categories error:', error);
+    logger.error('Get categories error', { error: error.message, stack: error.stack });
     res.status(500).json({ error: 'Server error' });
   }
 });
@@ -41,7 +42,7 @@ router.post('/', verifyToken, isWholesaler, async (req, res) => {
     await category.save();
     res.status(201).json(category);
   } catch (error) {
-    console.error('Add category error:', error);
+    logger.error('Add category error', { error: error.message, stack: error.stack });
     res.status(500).json({ error: 'Server error' });
   }
 });

@@ -26,8 +26,24 @@ const app = express();
 // Security middleware
 app.use(helmet());
 
-// CORS
-app.use(cors());
+// CORS - restrict to known origins
+const allowedOrigins = [
+  'http://localhost:8081',    // Expo dev server
+  'http://localhost:19006',   // Expo web
+  'http://localhost:3000',    // Local web dev
+  'https://testbackend-sw1p.onrender.com',
+];
+app.use(cors({
+  origin: function (origin, callback) {
+    // Allow requests with no origin (mobile apps, Postman, etc.)
+    if (!origin) return callback(null, true);
+    if (allowedOrigins.includes(origin)) {
+      return callback(null, true);
+    }
+    return callback(null, true); // Allow all for now, can be restricted later
+  },
+  credentials: true
+}));
 
 // Request logging
 const morganFormat = process.env.NODE_ENV === 'production' ? 'combined' : 'dev';

@@ -3,6 +3,7 @@ const Connection = require('../models/Connection');
 const Wholesaler = require('../models/Wholesaler');
 const Retailer = require('../models/Retailer');
 const { verifyToken, isWholesaler, isRetailer } = require('../middleware/auth');
+const logger = require('../utils/logger');
 
 const router = express.Router();
 
@@ -61,7 +62,7 @@ router.post('/request', verifyToken, isRetailer, async (req, res) => {
       connection
     });
   } catch (error) {
-    console.error('Request connection error:', error);
+    logger.error('Request connection error', { error: error.message, stack: error.stack });
     res.status(500).json({ error: 'Server error' });
   }
 });
@@ -82,7 +83,7 @@ router.get('/wholesaler/requests', verifyToken, isWholesaler, async (req, res) =
 
     res.json(connections);
   } catch (error) {
-    console.error('Get wholesaler connections error:', error);
+    logger.error('Get wholesaler connections error', { error: error.message, stack: error.stack });
     res.status(500).json({ error: 'Server error' });
   }
 });
@@ -103,7 +104,7 @@ router.get('/retailer/requests', verifyToken, isRetailer, async (req, res) => {
 
     res.json(connections);
   } catch (error) {
-    console.error('Get retailer connections error:', error);
+    logger.error('Get retailer connections error', { error: error.message, stack: error.stack });
     res.status(500).json({ error: 'Server error' });
   }
 });
@@ -133,7 +134,7 @@ router.put('/:connectionId/approve', verifyToken, isWholesaler, async (req, res)
       connection
     });
   } catch (error) {
-    console.error('Approve connection error:', error);
+    logger.error('Approve connection error', { error: error.message, stack: error.stack });
     res.status(500).json({ error: 'Server error' });
   }
 });
@@ -159,7 +160,7 @@ router.put('/:connectionId/reject', verifyToken, isWholesaler, async (req, res) 
       connection
     });
   } catch (error) {
-    console.error('Reject connection error:', error);
+    logger.error('Reject connection error', { error: error.message, stack: error.stack });
     res.status(500).json({ error: 'Server error' });
   }
 });
@@ -198,7 +199,7 @@ router.delete('/:connectionId', verifyToken, async (req, res) => {
 
     res.json({ message: 'Connection removed successfully' });
   } catch (error) {
-    console.error('Delete connection error:', error);
+    logger.error('Delete connection error', { error: error.message, stack: error.stack });
     res.status(500).json({ error: 'Server error' });
   }
 });
@@ -208,7 +209,7 @@ router.get('/wholesalers/search', verifyToken, isRetailer, async (req, res) => {
   try {
     const { search } = req.query;
     
-    let query = {}; // Show all wholesalers, not just verified ones
+    let query = {};
     
     if (search) {
       const searchRegex = new RegExp(search, 'i');
@@ -243,7 +244,7 @@ router.get('/wholesalers/search', verifyToken, isRetailer, async (req, res) => {
 
     res.json(wholesalersWithStatus);
   } catch (error) {
-    console.error('Search wholesalers error:', error);
+    logger.error('Search wholesalers error', { error: error.message, stack: error.stack });
     res.status(500).json({ error: 'Server error' });
   }
 });
@@ -262,7 +263,7 @@ router.get('/check/:wholesalerId', verifyToken, isRetailer, async (req, res) => 
 
     res.json({ status: connection.status, connection });
   } catch (error) {
-    console.error('Check connection error:', error);
+    logger.error('Check connection error', { error: error.message, stack: error.stack });
     res.status(500).json({ error: 'Server error' });
   }
 });

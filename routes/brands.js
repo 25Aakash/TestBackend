@@ -2,48 +2,25 @@ const express = require('express');
 const router = express.Router();
 const Brand = require('../models/Brand');
 const Salesman = require('../models/Salesman');
-const { verifyToken } = require('../middleware/auth');
-
-// Helper to get effective wholesaler ID (for both wholesaler and salesman)
-const getEffectiveWholesalerId = async (req) => {
-  if (req.user.userType === 'wholesaler') {
-    return req.user.userId;
-  } else if (req.user.userType === 'salesman') {
-    const salesman = await Salesman.findById(req.user.userId);
-    if (!salesman || !salesman.is_active) {
-      throw new Error('Salesman not found or inactive');
-    }
-    return salesman.wholesaler_id;
-  }
-  throw new Error('Invalid user type');
-};
+const { verifyToken, isWholesaler, isWholesalerOrSalesman } = require('../middleware/auth');
+const logger = require('../utils/logger');
 
 // Get all brands for the logged-in wholesaler/salesman
-router.get('/', verifyToken, async (req, res) => {
+router.get('/', verifyToken, isWholesalerOrSalesman, async (req, res) => {
   try {
-    if (req.user.userType !== 'wholesaler' && req.user.userType !== 'salesman') {
-      return res.status(403).json({ error: 'Only wholesalers or salesmen can access brands' });
-    }
-
-    const wholesalerId = await getEffectiveWholesalerId(req);
-    const brands = await Brand.find({ wholesaler_id: wholesalerId })
+    const brands = await Brand.find({ wholesaler_id: req.effectiveWholesalerId })
       .sort({ name: 1 });
 
     res.json(brands);
   } catch (error) {
-    console.error('Get brands error:', error);
+    logger.error('Get brands error', { error: error.message, stack: error.stack });
     res.status(500).json({ error: 'Server error' });
   }
 });
 
 // Create a new brand
-router.post('/', verifyToken, async (req, res) => {
+router.post('/', verifyToken, isWholesalerOrSalesman, async (req, res) => {
   try {
-    if (req.user.userType !== 'wholesaler' && req.user.userType !== 'salesman') {
-      return res.status(403).json({ error: 'Only wholesalers or salesmen can create brands' });
-    }
-
-    const wholesalerId = await getEffectiveWholesalerId(req);
     const { name, description, image } = req.body;
 
     if (!name || !name.trim()) {
@@ -52,7 +29,7 @@ router.post('/', verifyToken, async (req, res) => {
 
     // Check if brand already exists for this wholesaler
     const existingBrand = await Brand.findOne({
-      wholesaler_id: wholesalerId,
+      wholesaler_id: req.effectiveWholesalerId,
       name: name.trim()
     });
 
@@ -61,7 +38,7 @@ router.post('/', verifyToken, async (req, res) => {
     }
 
     const brand = new Brand({
-      wholesaler_id: wholesalerId,
+      wholesaler_id: req.effectiveWholesalerId,
       name: name.trim(),
       description: description || '',
       image: image || ''
@@ -70,7 +47,7 @@ router.post('/', verifyToken, async (req, res) => {
     await brand.save();
     res.status(201).json(brand);
   } catch (error) {
-    console.error('Create brand error:', error);
+    logger.error('Create brand error', { error: error.message, stack: error.stack });
     if (error.code === 11000) {
       return res.status(400).json({ error: 'Brand name already exists' });
     }
@@ -79,13 +56,8 @@ router.post('/', verifyToken, async (req, res) => {
 });
 
 // Update a brand
-router.put('/:id', verifyToken, async (req, res) => {
+router.put('/:id', verifyToken, isWholesalerOrSalesman, async (req, res) => {
   try {
-    if (req.user.userType !== 'wholesaler' && req.user.userType !== 'salesman') {
-      return res.status(403).json({ error: 'Only wholesalers or salesmen can update brands' });
-    }
-
-    const wholesalerId = await getEffectiveWholesalerId(req);
     const { name, description, image } = req.body;
 
     if (!name || !name.trim()) {
@@ -94,7 +66,7 @@ router.put('/:id', verifyToken, async (req, res) => {
 
     const brand = await Brand.findOne({
       _id: req.params.id,
-      wholesaler_id: wholesalerId
+      wholesaler_id: req.effectiveWholesalerId
     });
 
     if (!brand) {
@@ -104,7 +76,7 @@ router.put('/:id', verifyToken, async (req, res) => {
     // Check if new name conflicts with existing brand
     if (name.trim() !== brand.name) {
       const existingBrand = await Brand.findOne({
-        wholesaler_id: wholesalerId,
+        wholesaler_id: req.effectiveWholesalerId,
         name: name.trim(),
         _id: { $ne: req.params.id }
       });
@@ -123,7 +95,7 @@ router.put('/:id', verifyToken, async (req, res) => {
 
     res.json(brand);
   } catch (error) {
-    console.error('Update brand error:', error);
+    logger.error('Update brand error', { error: error.message, stack: error.stack });
     if (error.code === 11000) {
       return res.status(400).json({ error: 'Brand name already exists' });
     }
@@ -132,12 +104,8 @@ router.put('/:id', verifyToken, async (req, res) => {
 });
 
 // Delete a brand (wholesaler only - salesmen cannot delete)
-router.delete('/:id', verifyToken, async (req, res) => {
+router.delete('/:id', verifyToken, isWholesaler, async (req, res) => {
   try {
-    if (req.user.userType !== 'wholesaler') {
-      return res.status(403).json({ error: 'Only wholesalers can delete brands' });
-    }
-
     const brand = await Brand.findOneAndDelete({
       _id: req.params.id,
       wholesaler_id: req.user.userId
@@ -149,7 +117,7 @@ router.delete('/:id', verifyToken, async (req, res) => {
 
     res.json({ message: 'Brand deleted successfully' });
   } catch (error) {
-    console.error('Delete brand error:', error);
+    logger.error('Delete brand error', { error: error.message, stack: error.stack });
     res.status(500).json({ error: 'Server error' });
   }
 });

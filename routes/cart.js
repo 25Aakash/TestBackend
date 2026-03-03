@@ -2,6 +2,8 @@ const express = require('express');
 const Cart = require('../models/Cart');
 const Product = require('../models/Product');
 const { verifyToken, isRetailer } = require('../middleware/auth');
+const { calculateUnitPrice } = require('../utils/pricing');
+const logger = require('../utils/logger');
 
 const router = express.Router();
 
@@ -34,7 +36,7 @@ router.get('/', verifyToken, isRetailer, async (req, res) => {
       total: cartTotal
     });
   } catch (error) {
-    console.error('Get cart error:', error);
+    logger.error('Get cart error', { error: error.message, stack: error.stack });
     res.status(500).json({ error: 'Server error' });
   }
 });
@@ -67,16 +69,8 @@ router.post('/add', verifyToken, isRetailer, async (req, res) => {
       });
     }
 
-    // Calculate unit price based on quantity
-    let unitPrice = product.base_price;
-    for (const tier of product.pricing_tiers) {
-      if (quantity >= tier.min_quantity) {
-        if (tier.max_quantity === null || quantity <= tier.max_quantity) {
-          unitPrice = tier.price_per_unit;
-          break;
-        }
-      }
-    }
+    // Calculate unit price based on quantity using shared utility
+    const unitPrice = calculateUnitPrice(product, quantity);
 
     // Find or create cart
     let cart = await Cart.findOne({ retailer_id: req.user.userId });
@@ -113,7 +107,7 @@ router.post('/add', verifyToken, isRetailer, async (req, res) => {
       cart
     });
   } catch (error) {
-    console.error('Add to cart error:', error);
+    logger.error('Add to cart error', { error: error.message, stack: error.stack });
     res.status(500).json({ error: 'Server error' });
   }
 });
@@ -153,16 +147,8 @@ router.put('/update/:product_id', verifyToken, isRetailer, async (req, res) => {
       });
     }
 
-    // Recalculate unit price for new quantity
-    let unitPrice = product.base_price;
-    for (const tier of product.pricing_tiers) {
-      if (quantity >= tier.min_quantity) {
-        if (tier.max_quantity === null || quantity <= tier.max_quantity) {
-          unitPrice = tier.price_per_unit;
-          break;
-        }
-      }
-    }
+    // Recalculate unit price for new quantity using shared utility
+    const unitPrice = calculateUnitPrice(product, quantity);
 
     cart.items[itemIndex].quantity = quantity;
     cart.items[itemIndex].unit_price = unitPrice;
@@ -174,7 +160,7 @@ router.put('/update/:product_id', verifyToken, isRetailer, async (req, res) => {
       cart
     });
   } catch (error) {
-    console.error('Update cart error:', error);
+    logger.error('Update cart error', { error: error.message, stack: error.stack });
     res.status(500).json({ error: 'Server error' });
   }
 });
@@ -201,7 +187,7 @@ router.delete('/remove/:product_id', verifyToken, isRetailer, async (req, res) =
       cart
     });
   } catch (error) {
-    console.error('Remove from cart error:', error);
+    logger.error('Remove from cart error', { error: error.message, stack: error.stack });
     res.status(500).json({ error: 'Server error' });
   }
 });
@@ -216,7 +202,7 @@ router.delete('/clear', verifyToken, isRetailer, async (req, res) => {
 
     res.json({ message: 'Cart cleared' });
   } catch (error) {
-    console.error('Clear cart error:', error);
+    logger.error('Clear cart error', { error: error.message, stack: error.stack });
     res.status(500).json({ error: 'Server error' });
   }
 });

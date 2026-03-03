@@ -3,37 +3,36 @@ const bcrypt = require('bcryptjs');
 const Salesman = require('../models/Salesman');
 const Retailer = require('../models/Retailer');
 const Connection = require('../models/Connection');
-const { verifyToken, isWholesaler, isSalesman, isWholesalerOrSalesman } = require('../middleware/auth');
+const Product = require('../models/Product');
+const Order = require('../models/Order');
+const SalesmanCart = require('../models/SalesmanCart');
+const { verifyToken, isWholesaler, isSalesman } = require('../middleware/auth');
+const { calculateUnitPrice } = require('../utils/pricing');
+const { generateOrderNumber } = require('../utils/orderNumber');
+const { attachBrandDetails } = require('../utils/brandHelper');
+const logger = require('../utils/logger');
 
 const router = express.Router();
 
 // ==================== WHOLESALER ROUTES ====================
 
 // Get all salesmen for a wholesaler
-router.get('/my-salesmen', verifyToken, async (req, res) => {
+router.get('/my-salesmen', verifyToken, isWholesaler, async (req, res) => {
   try {
-    if (req.user.userType !== 'wholesaler') {
-      return res.status(403).json({ error: 'Only wholesalers can access this' });
-    }
-
     const salesmen = await Salesman.find({ wholesaler_id: req.user.userId })
       .select('-password')
       .sort({ created_at: -1 });
 
     res.json(salesmen);
   } catch (error) {
-    console.error('Get salesmen error:', error);
+    logger.error('Get salesmen error', { error: error.message, stack: error.stack });
     res.status(500).json({ error: 'Server error' });
   }
 });
 
 // Create a new salesman (wholesaler only)
-router.post('/create', verifyToken, async (req, res) => {
+router.post('/create', verifyToken, isWholesaler, async (req, res) => {
   try {
-    if (req.user.userType !== 'wholesaler') {
-      return res.status(403).json({ error: 'Only wholesalers can create salesmen' });
-    }
-
     const { name, email, phone, permissions } = req.body;
 
     if (!name || !phone) {
@@ -93,18 +92,14 @@ router.post('/create', verifyToken, async (req, res) => {
       }
     });
   } catch (error) {
-    console.error('Create salesman error:', error);
+    logger.error('Create salesman error', { error: error.message, stack: error.stack });
     res.status(500).json({ error: 'Server error' });
   }
 });
 
 // Update salesman (wholesaler only)
-router.put('/:id', verifyToken, async (req, res) => {
+router.put('/:id', verifyToken, isWholesaler, async (req, res) => {
   try {
-    if (req.user.userType !== 'wholesaler') {
-      return res.status(403).json({ error: 'Only wholesalers can update salesmen' });
-    }
-
     const { name, email, phone, password, is_active, permissions } = req.body;
 
     const salesman = await Salesman.findOne({
@@ -162,18 +157,14 @@ router.put('/:id', verifyToken, async (req, res) => {
       }
     });
   } catch (error) {
-    console.error('Update salesman error:', error);
+    logger.error('Update salesman error', { error: error.message, stack: error.stack });
     res.status(500).json({ error: 'Server error' });
   }
 });
 
 // Delete salesman (wholesaler only)
-router.delete('/:id', verifyToken, async (req, res) => {
+router.delete('/:id', verifyToken, isWholesaler, async (req, res) => {
   try {
-    if (req.user.userType !== 'wholesaler') {
-      return res.status(403).json({ error: 'Only wholesalers can delete salesmen' });
-    }
-
     const salesman = await Salesman.findOneAndDelete({
       _id: req.params.id,
       wholesaler_id: req.user.userId
@@ -185,26 +176,20 @@ router.delete('/:id', verifyToken, async (req, res) => {
 
     res.json({ message: 'Salesman deleted successfully' });
   } catch (error) {
-    console.error('Delete salesman error:', error);
+    logger.error('Delete salesman error', { error: error.message, stack: error.stack });
     res.status(500).json({ error: 'Server error' });
   }
 });
 
 // Get retailers added by salesmen (pending approval) - wholesaler only
-router.get('/pending-retailers', verifyToken, async (req, res) => {
+router.get('/pending-retailers', verifyToken, isWholesaler, async (req, res) => {
   try {
-    if (req.user.userType !== 'wholesaler') {
-      return res.status(403).json({ error: 'Only wholesalers can access this' });
-    }
-
-    // Find connections requested by salesmen that are pending
     const pendingConnections = await Connection.find({
       wholesaler_id: req.user.userId,
       requested_by: 'salesman',
       status: 'pending'
     }).populate('retailer_id', 'business_name owner_name phone city');
 
-    // Get salesman details for each connection
     const connectionsWithSalesman = await Promise.all(
       pendingConnections.map(async (conn) => {
         const salesman = await Salesman.findById(conn.salesman_id).select('name');
@@ -221,7 +206,7 @@ router.get('/pending-retailers', verifyToken, async (req, res) => {
 
     res.json(connectionsWithSalesman);
   } catch (error) {
-    console.error('Get pending retailers error:', error);
+    logger.error('Get pending retailers error', { error: error.message, stack: error.stack });
     res.status(500).json({ error: 'Server error' });
   }
 });
@@ -229,12 +214,8 @@ router.get('/pending-retailers', verifyToken, async (req, res) => {
 // ==================== SALESMAN ROUTES ====================
 
 // Get salesman profile
-router.get('/profile', verifyToken, async (req, res) => {
+router.get('/profile', verifyToken, isSalesman, async (req, res) => {
   try {
-    if (req.user.userType !== 'salesman') {
-      return res.status(403).json({ error: 'Only salesmen can access this' });
-    }
-
     const salesman = await Salesman.findById(req.user.userId)
       .select('-password')
       .populate('wholesaler_id', 'business_name');
@@ -245,18 +226,14 @@ router.get('/profile', verifyToken, async (req, res) => {
 
     res.json(salesman);
   } catch (error) {
-    console.error('Get profile error:', error);
+    logger.error('Get profile error', { error: error.message, stack: error.stack });
     res.status(500).json({ error: 'Server error' });
   }
 });
 
 // Add a new retailer (salesman only)
-router.post('/add-retailer', verifyToken, async (req, res) => {
+router.post('/add-retailer', verifyToken, isSalesman, async (req, res) => {
   try {
-    if (req.user.userType !== 'salesman') {
-      return res.status(403).json({ error: 'Only salesmen can add retailers' });
-    }
-
     const {
       business_name,
       owner_name,
@@ -272,10 +249,7 @@ router.post('/add-retailer', verifyToken, async (req, res) => {
     } = req.body;
 
     // Get salesman to find wholesaler
-    const salesman = await Salesman.findById(req.user.userId);
-    if (!salesman) {
-      return res.status(404).json({ error: 'Salesman not found' });
-    }
+    const salesman = req.salesman;
 
     // Normalize values
     const normalizedGstNumber = gst_number && gst_number.trim() ? gst_number.trim() : undefined;
@@ -305,7 +279,7 @@ router.post('/add-retailer', verifyToken, async (req, res) => {
         });
       }
     } else {
-      // Create new retailer - use phone as temp password, they will set their own on first login
+      // Create new retailer
       const hashedPassword = await bcrypt.hash(phone, 10);
 
       retailer = new Retailer({
@@ -348,49 +322,35 @@ router.post('/add-retailer', verifyToken, async (req, res) => {
       }
     });
   } catch (error) {
-    console.error('Add retailer error:', error);
+    logger.error('Add retailer error', { error: error.message, stack: error.stack });
     res.status(500).json({ error: 'Server error' });
   }
 });
 
-// Get retailers for this salesman (includes all retailers if can_view_all_retailers is true)
-router.get('/my-retailers', verifyToken, async (req, res) => {
+// Get retailers for this salesman
+router.get('/my-retailers', verifyToken, isSalesman, async (req, res) => {
   try {
-    if (req.user.userType !== 'salesman') {
-      return res.status(403).json({ error: 'Only salesmen can access this' });
-    }
-
-    const salesman = await Salesman.findById(req.user.userId);
-    if (!salesman) {
-      return res.status(404).json({ error: 'Salesman not found' });
-    }
-
-    console.log('Salesman:', salesman.name, 'Permissions:', salesman.permissions);
+    const salesman = req.salesman;
 
     let connections;
 
     if (salesman.permissions?.can_view_all_retailers) {
-      // Show ALL retailers connected to this wholesaler (approved only from others)
-      // Plus show own pending retailers
       connections = await Connection.find({
         wholesaler_id: salesman.wholesaler_id,
         $or: [
-          { status: 'approved' },  // All approved connections
-          { salesman_id: req.user.userId }  // Plus all own connections (any status)
+          { status: 'approved' },
+          { salesman_id: req.user.userId }
         ]
       }).populate('retailer_id', 'business_name owner_name phone city state');
     } else {
-      // Only show retailers added by this salesman (any status)
       connections = await Connection.find({
         wholesaler_id: salesman.wholesaler_id,
         salesman_id: req.user.userId
       }).populate('retailer_id', 'business_name owner_name phone city state');
     }
 
-    console.log('Found connections:', connections.length);
-
     const retailers = connections
-      .filter(conn => conn.retailer_id) // Filter out any null retailer refs
+      .filter(conn => conn.retailer_id)
       .map(conn => ({
         _id: conn.retailer_id._id,
         business_name: conn.retailer_id.business_name,
@@ -408,22 +368,15 @@ router.get('/my-retailers', verifyToken, async (req, res) => {
 
     res.json(retailers);
   } catch (error) {
-    console.error('Get my retailers error:', error);
+    logger.error('Get my retailers error', { error: error.message, stack: error.stack });
     res.status(500).json({ error: 'Server error' });
   }
 });
 
 // Get salesman permissions
-router.get('/my-permissions', verifyToken, async (req, res) => {
+router.get('/my-permissions', verifyToken, isSalesman, async (req, res) => {
   try {
-    if (req.user.userType !== 'salesman') {
-      return res.status(403).json({ error: 'Only salesmen can access this' });
-    }
-
-    const salesman = await Salesman.findById(req.user.userId);
-    if (!salesman) {
-      return res.status(404).json({ error: 'Salesman not found' });
-    }
+    const salesman = req.salesman;
 
     res.json({
       permissions: salesman.permissions || {
@@ -437,75 +390,17 @@ router.get('/my-permissions', verifyToken, async (req, res) => {
       }
     });
   } catch (error) {
-    console.error('Get permissions error:', error);
+    logger.error('Get permissions error', { error: error.message, stack: error.stack });
     res.status(500).json({ error: 'Server error' });
   }
 });
 
 // ==================== SALESMAN CART & ORDER ROUTES ====================
 
-const Product = require('../models/Product');
-const Order = require('../models/Order');
-const Brand = require('../models/Brand');
-
-// Get salesman's temporary cart (stored in memory/session - we'll use a simple approach)
-// Using a SalesmanCart model for persistent cart per salesman-retailer combo
-const mongoose = require('mongoose');
-
-// Define SalesmanCart schema inline (or could be separate file)
-const salesmanCartSchema = new mongoose.Schema({
-  salesman_id: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'Salesman',
-    required: true
-  },
-  retailer_id: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'Retailer',
-    required: true
-  },
-  wholesaler_id: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'Wholesaler',
-    required: true
-  },
-  items: [{
-    product_id: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: 'Product',
-      required: true
-    },
-    quantity: {
-      type: Number,
-      required: true,
-      min: 1
-    },
-    unit_price: {
-      type: Number,
-      required: true
-    }
-  }],
-  updated_at: {
-    type: Date,
-    default: Date.now
-  }
-}, { timestamps: true });
-
-salesmanCartSchema.index({ salesman_id: 1, retailer_id: 1 }, { unique: true });
-
-const SalesmanCart = mongoose.models.SalesmanCart || mongoose.model('SalesmanCart', salesmanCartSchema);
-
 // Get cart for a specific retailer
-router.get('/cart/:retailer_id', verifyToken, async (req, res) => {
+router.get('/cart/:retailer_id', verifyToken, isSalesman, async (req, res) => {
   try {
-    if (req.user.userType !== 'salesman') {
-      return res.status(403).json({ error: 'Only salesmen can access this' });
-    }
-
-    const salesman = await Salesman.findById(req.user.userId);
-    if (!salesman) {
-      return res.status(404).json({ error: 'Salesman not found' });
-    }
+    const salesman = req.salesman;
 
     if (!salesman.permissions?.can_place_orders) {
       return res.status(403).json({ error: 'You do not have permission to place orders' });
@@ -535,22 +430,15 @@ router.get('/cart/:retailer_id', verifyToken, async (req, res) => {
       total: cartTotal
     });
   } catch (error) {
-    console.error('Get salesman cart error:', error);
+    logger.error('Get salesman cart error', { error: error.message, stack: error.stack });
     res.status(500).json({ error: 'Server error' });
   }
 });
 
 // Add to cart for a retailer
-router.post('/cart/:retailer_id/add', verifyToken, async (req, res) => {
+router.post('/cart/:retailer_id/add', verifyToken, isSalesman, async (req, res) => {
   try {
-    if (req.user.userType !== 'salesman') {
-      return res.status(403).json({ error: 'Only salesmen can access this' });
-    }
-
-    const salesman = await Salesman.findById(req.user.userId);
-    if (!salesman) {
-      return res.status(404).json({ error: 'Salesman not found' });
-    }
+    const salesman = req.salesman;
 
     if (!salesman.permissions?.can_place_orders) {
       return res.status(403).json({ error: 'You do not have permission to place orders' });
@@ -597,18 +485,8 @@ router.post('/cart/:retailer_id/add', verifyToken, async (req, res) => {
       });
     }
 
-    // Calculate unit price based on quantity
-    let unitPrice = product.base_price;
-    if (product.pricing_tiers && product.pricing_tiers.length > 0) {
-      for (const tier of product.pricing_tiers) {
-        if (quantity >= tier.min_quantity) {
-          if (tier.max_quantity === null || quantity <= tier.max_quantity) {
-            unitPrice = tier.price_per_unit;
-            break;
-          }
-        }
-      }
-    }
+    // Calculate unit price using shared utility
+    const unitPrice = calculateUnitPrice(product, quantity);
 
     // Find or create cart
     let cart = await SalesmanCart.findOne({
@@ -631,11 +509,9 @@ router.post('/cart/:retailer_id/add', verifyToken, async (req, res) => {
     );
 
     if (existingItemIndex > -1) {
-      // Update quantity
       cart.items[existingItemIndex].quantity = quantity;
       cart.items[existingItemIndex].unit_price = unitPrice;
     } else {
-      // Add new item
       cart.items.push({
         product_id,
         quantity,
@@ -650,18 +526,14 @@ router.post('/cart/:retailer_id/add', verifyToken, async (req, res) => {
       itemCount: cart.items.length
     });
   } catch (error) {
-    console.error('Add to salesman cart error:', error);
+    logger.error('Add to salesman cart error', { error: error.message, stack: error.stack });
     res.status(500).json({ error: 'Server error' });
   }
 });
 
 // Update cart item
-router.put('/cart/:retailer_id/update/:product_id', verifyToken, async (req, res) => {
+router.put('/cart/:retailer_id/update/:product_id', verifyToken, isSalesman, async (req, res) => {
   try {
-    if (req.user.userType !== 'salesman') {
-      return res.status(403).json({ error: 'Only salesmen can access this' });
-    }
-
     const { quantity } = req.body;
     const { retailer_id, product_id } = req.params;
 
@@ -696,18 +568,8 @@ router.put('/cart/:retailer_id/update/:product_id', verifyToken, async (req, res
       });
     }
 
-    // Recalculate unit price
-    let unitPrice = product.base_price;
-    if (product.pricing_tiers && product.pricing_tiers.length > 0) {
-      for (const tier of product.pricing_tiers) {
-        if (quantity >= tier.min_quantity) {
-          if (tier.max_quantity === null || quantity <= tier.max_quantity) {
-            unitPrice = tier.price_per_unit;
-            break;
-          }
-        }
-      }
-    }
+    // Recalculate unit price using shared utility
+    const unitPrice = calculateUnitPrice(product, quantity);
 
     cart.items[itemIndex].quantity = quantity;
     cart.items[itemIndex].unit_price = unitPrice;
@@ -716,18 +578,14 @@ router.put('/cart/:retailer_id/update/:product_id', verifyToken, async (req, res
 
     res.json({ message: 'Cart updated' });
   } catch (error) {
-    console.error('Update salesman cart error:', error);
+    logger.error('Update salesman cart error', { error: error.message, stack: error.stack });
     res.status(500).json({ error: 'Server error' });
   }
 });
 
 // Remove from cart
-router.delete('/cart/:retailer_id/remove/:product_id', verifyToken, async (req, res) => {
+router.delete('/cart/:retailer_id/remove/:product_id', verifyToken, isSalesman, async (req, res) => {
   try {
-    if (req.user.userType !== 'salesman') {
-      return res.status(403).json({ error: 'Only salesmen can access this' });
-    }
-
     const { retailer_id, product_id } = req.params;
 
     const cart = await SalesmanCart.findOne({
@@ -747,18 +605,14 @@ router.delete('/cart/:retailer_id/remove/:product_id', verifyToken, async (req, 
 
     res.json({ message: 'Product removed from cart' });
   } catch (error) {
-    console.error('Remove from salesman cart error:', error);
+    logger.error('Remove from salesman cart error', { error: error.message, stack: error.stack });
     res.status(500).json({ error: 'Server error' });
   }
 });
 
 // Clear cart for retailer
-router.delete('/cart/:retailer_id/clear', verifyToken, async (req, res) => {
+router.delete('/cart/:retailer_id/clear', verifyToken, isSalesman, async (req, res) => {
   try {
-    if (req.user.userType !== 'salesman') {
-      return res.status(403).json({ error: 'Only salesmen can access this' });
-    }
-
     await SalesmanCart.findOneAndDelete({
       salesman_id: req.user.userId,
       retailer_id: req.params.retailer_id
@@ -766,22 +620,15 @@ router.delete('/cart/:retailer_id/clear', verifyToken, async (req, res) => {
 
     res.json({ message: 'Cart cleared' });
   } catch (error) {
-    console.error('Clear salesman cart error:', error);
+    logger.error('Clear salesman cart error', { error: error.message, stack: error.stack });
     res.status(500).json({ error: 'Server error' });
   }
 });
 
 // Place order for retailer
-router.post('/place-order/:retailer_id', verifyToken, async (req, res) => {
+router.post('/place-order/:retailer_id', verifyToken, isSalesman, async (req, res) => {
   try {
-    if (req.user.userType !== 'salesman') {
-      return res.status(403).json({ error: 'Only salesmen can access this' });
-    }
-
-    const salesman = await Salesman.findById(req.user.userId);
-    if (!salesman) {
-      return res.status(404).json({ error: 'Salesman not found' });
-    }
+    const salesman = req.salesman;
 
     if (!salesman.permissions?.can_place_orders) {
       return res.status(403).json({ error: 'You do not have permission to place orders' });
@@ -849,18 +696,8 @@ router.post('/place-order/:retailer_id', verifyToken, async (req, res) => {
       gst_amount += itemGst;
     }
 
-    // Generate order number
-    const date = new Date();
-    const year = date.getFullYear().toString().slice(-2);
-    const month = (date.getMonth() + 1).toString().padStart(2, '0');
-    const day = date.getDate().toString().padStart(2, '0');
-    const startOfDay = new Date(date.setHours(0, 0, 0, 0));
-    const endOfDay = new Date(date.setHours(23, 59, 59, 999));
-    const todayOrdersCount = await Order.countDocuments({
-      createdAt: { $gte: startOfDay, $lte: endOfDay }
-    });
-    const sequence = (todayOrdersCount + 1).toString().padStart(4, '0');
-    const orderNumber = `ORD${year}${month}${day}${sequence}`;
+    // Generate order number using shared atomic utility
+    const orderNumber = await generateOrderNumber();
 
     // Create order
     const order = new Order({
@@ -899,24 +736,15 @@ router.post('/place-order/:retailer_id', verifyToken, async (req, res) => {
       }
     });
   } catch (error) {
-    console.error('Place order error:', error);
+    logger.error('Place order error', { error: error.message, stack: error.stack });
     res.status(500).json({ error: 'Server error' });
   }
 });
 
 // Get products from salesman's wholesaler
-router.get('/my-wholesaler-products', verifyToken, async (req, res) => {
+router.get('/my-wholesaler-products', verifyToken, isSalesman, async (req, res) => {
   try {
-    if (req.user.userType !== 'salesman') {
-      return res.status(403).json({ error: 'Only salesmen can access this' });
-    }
-
-    // Get the salesman to find their wholesaler_id
-    const salesman = await Salesman.findById(req.user.userId);
-    if (!salesman) {
-      return res.status(404).json({ error: 'Salesman not found' });
-    }
-
+    const salesman = req.salesman;
     const { category, search } = req.query;
 
     let query = {
@@ -940,58 +768,19 @@ router.get('/my-wholesaler-products', verifyToken, async (req, res) => {
       .populate('wholesaler_id', 'business_name city')
       .sort({ createdAt: -1 });
 
-    // Attach brand details
-    const brandLookups = products
-      .filter(p => p.brand && p.wholesaler_id)
-      .map(p => ({
-        wholesaler_id: p.wholesaler_id._id || p.wholesaler_id,
-        brand: p.brand
-      }));
-
-    if (brandLookups.length > 0) {
-      const brands = await Brand.find({
-        $or: brandLookups.map(bl => ({
-          wholesaler_id: bl.wholesaler_id,
-          name: bl.brand
-        }))
-      });
-
-      const brandMap = {};
-      brands.forEach(b => {
-        const key = `${b.wholesaler_id}_${b.name}`;
-        brandMap[key] = {
-          _id: b._id,
-          name: b.name,
-          image: b.image || '',
-          description: b.description || ''
-        };
-      });
-
-      products = products.map(p => {
-        const productObj = p.toObject ? p.toObject() : p;
-        const wholesalerId = productObj.wholesaler_id?._id || productObj.wholesaler_id;
-        const key = `${wholesalerId}_${productObj.brand}`;
-        if (brandMap[key]) {
-          productObj.brandDetails = brandMap[key];
-        }
-        return productObj;
-      });
-    }
+    // Attach brand details using shared utility
+    products = await attachBrandDetails(products);
 
     res.json(products);
   } catch (error) {
-    console.error('Get wholesaler products error:', error);
+    logger.error('Get wholesaler products error', { error: error.message, stack: error.stack });
     res.status(500).json({ error: 'Server error' });
   }
 });
 
 // Get orders placed by this salesman
-router.get('/my-orders', verifyToken, async (req, res) => {
+router.get('/my-orders', verifyToken, isSalesman, async (req, res) => {
   try {
-    if (req.user.userType !== 'salesman') {
-      return res.status(403).json({ error: 'Only salesmen can access this' });
-    }
-
     const orders = await Order.find({ placed_by_salesman: req.user.userId })
       .populate('retailer_id', 'business_name city phone')
       .populate('wholesaler_id', 'business_name')
@@ -999,7 +788,7 @@ router.get('/my-orders', verifyToken, async (req, res) => {
 
     res.json(orders);
   } catch (error) {
-    console.error('Get salesman orders error:', error);
+    logger.error('Get salesman orders error', { error: error.message, stack: error.stack });
     res.status(500).json({ error: 'Server error' });
   }
 });

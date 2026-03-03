@@ -87,18 +87,8 @@ const orderSchema = new mongoose.Schema({
   }
 }, { timestamps: true });
 
-// Generate order number before saving
-orderSchema.pre('save', async function(next) {
-  if (!this.order_number) {
-    const count = await mongoose.model('Order').countDocuments();
-    this.order_number = `ORD${Date.now()}${count + 1}`;
-  }
-  next();
-});
-
 // Index for faster queries
 orderSchema.index({ retailer_id: 1 });
 orderSchema.index({ wholesaler_id: 1 });
-orderSchema.index({ order_number: 1 });
 
 module.exports = mongoose.model('Order', orderSchema);
