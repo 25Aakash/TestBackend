@@ -35,7 +35,7 @@ const allowedOrigins = [
   'http://localhost:8081',    // Expo dev server
   'http://localhost:19006',   // Expo web
   'http://localhost:3000',    // Local web dev
-  'https://testbackend-sw1p.onrender.com',
+  'http://13.232.240.42:8080', // EC2 backend
 ];
 app.use(cors({
   origin: function (origin, callback) {
