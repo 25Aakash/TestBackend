@@ -23,8 +23,12 @@ const notificationRoutes = require('./routes/notifications');
 
 const app = express();
 
-// Security middleware
-app.use(helmet());
+// Security middleware — relax cross-origin policies for mobile app access
+app.use(helmet({
+  crossOriginResourcePolicy: { policy: 'cross-origin' },
+  crossOriginOpenerPolicy: false,
+  contentSecurityPolicy: false,
+}));
 
 // CORS - restrict to known origins
 const allowedOrigins = [
